@@ -36,16 +36,20 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 
 Il firmware più vicino analizzato (TR2309) ha buffer da **400 LED** e scrive fuori memoria, in modo persistente, oltre quel limite. Un solo controller da 1600 LED non è dimostrato: probabilmente servono più centraline (es. 4 × 400). L'app non supera 400 finché non sarà dimostrato il contrario. Dettagli in [docs/PROTOCOL.md §5](docs/PROTOCOL.md).
 
+## Versione 2.6 — 60 animazioni adattive
+
+- `Logic/AdaptiveEffects.swift`: porting in Swift di `Effetti_Adattivi.py` (60 preset come funzioni di tempo, posizione e zona). Le animazioni si calcolano sui punti della mappa attiva: layout di progetto oppure scansione reale allineata. Con due punti a Y vince il colore col canale più luminoso; un indirizzo senza punti resta spento.
+- Zona di ogni LED: quella del layout se presente, altrimenti quella del punto di progetto più vicino.
+- I test confrontano l'uscita Swift con valori calcolati dal riferimento Python (tolleranza 1 per arrotondamenti di libm) e verificano i test di accettazione della specifica.
+- Il vecchio pacchetto di fotogrammi pre-calcolati (25 MB) non è più incluso.
+
 ## Versione 2.5 — scansione reale sul modello
 
 - **Allineamento al progetto**: quando salvi una scansione, ogni pixel scansionato viene confrontato con la sua posizione nel layout di progetto (stessa centralina, stesso indirizzo). Rotazione, posizione e scala vengono stimate con minimi quadrati robusti, verso dell'auto compreso; i LED montati diversamente dal progetto non falsano il calcolo e restano dove li ha misurati la scansione. Esito mostrato nella Mappa 3D; rifacibile da "Allinea al modello".
-- **Animazioni su scansione**: con una mappa scansionata le 60 animazioni prendono, per ogni LED reale, il colore del punto di progetto più vicino (copie a Y lontane → media). Disattivabile.
 
-## Versione 2.4 — pacchetto 60 animazioni
+## Versione 2.4 — pacchetto 60 animazioni (sostituito dalla 2.6)
 
-- `Resources/AudiLightStudio_Effetti.json`: 60 animazioni pre-calcolate (RGB8, 24 fps) per i pacchi A–D × 200 indirizzi. Preset → "Pacchetto animazioni A1": anteprima 3D, Live, velocità 0,5–2×, intensità, colore unico.
-- Lettore proprio (`Logic/FramePack.swift`) con controlli di formato; A → 1ª centralina della lista, B → 2ª, ecc.
-- Il Live invia l'ultimo fotogramma disponibile quando le centraline hanno confermato il precedente: la fluidità reale dipende dal BLE (~72 comandi/s per centralina).
+- Lettore di pacchetti di fotogrammi pre-calcolati (`Logic/FramePack.swift`), ancora disponibile nel codice; il Live invia l'ultimo fotogramma disponibile, la fluidità reale dipende dal BLE (~72 comandi/s per centralina).
 
 ## Versione 2.3 — progetto Blender A1 (1600 LED)
 

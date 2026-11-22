@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Le 60 animazioni pre-calcolate sul layout A1 da 1600 LED: anteprima 3D e Live.
+/// Le 60 animazioni adattive: calcolate sui punti della mappa attiva (progetto o scansione reale).
 struct ClipLibraryView: View {
-    @EnvironmentObject var clips: ClipLibrary
     @EnvironmentObject var player: EffectPlayer
     @EnvironmentObject var hub: ControllerHub
     @EnvironmentObject var carMaps: CarMapStore
@@ -30,12 +29,15 @@ struct ClipLibraryView: View {
                                 .background(Capsule().fill(Theme.surfaceHigh))
                         }
                         Spacer()
-                        if carMaps.active?.isDesign != true && carMaps.active?.isMeasured != true { Badge(text: "SERVE IL LAYOUT A1", color: Theme.warning) }
-                        if carMaps.active?.isMeasured == true && player.clipRetargetActive { Badge(text: "SU SCANSIONE", color: Theme.ok) }
+                        if carMaps.active?.isMeasured == true { Badge(text: "SU SCANSIONE", color: Theme.ok) }
+                        else if carMaps.active?.isDesign == true { Badge(text: "SU PROGETTO", color: Theme.warning) }
                     }
-                    if carMaps.active == nil || carMaps.active?.isDemo == true {
-                        Text("Le animazioni sono calcolate sul layout di progetto: caricalo da Mappa 3D → menu mappa → \"Carica layout A1 di progetto\" per vederle al posto giusto.")
+                    if carMaps.active == nil {
+                        Text("Serve una mappa: carica il layout di progetto da Mappa 3D → menu mappa, oppure fai la scansione.")
                             .font(.caption).foregroundStyle(Theme.warning)
+                    } else {
+                        Text("Ogni animazione è calcolata sulla posizione e sulla zona di ogni LED della mappa attiva: dopo la scansione segue i LED veri. Le due copie a Y hanno sempre lo stesso colore.")
+                            .font(.caption2).foregroundStyle(Theme.textSecondary)
                     }
                 }
                 controlsCard
@@ -44,8 +46,8 @@ struct ClipLibraryView: View {
             .padding()
         }
         .screenBackground()
-        .navigationTitle("60 animazioni A1")
-        .onAppear { clips.loadIfNeeded(); player.setMap(carMaps.active) }
+        .navigationTitle("60 animazioni adattive")
+        .onAppear { player.setMap(carMaps.active) }
         .onChange(of: useTint) { _ in applyTint() }
         .onChange(of: tint) { _ in applyTint() }
     }
@@ -58,13 +60,6 @@ struct ClipLibraryView: View {
             .pickerStyle(.segmented)
             slider("Velocità", value: $player.clipSettings.speed, range: 0.5...2, format: "%.2f×")
             slider("Intensità", value: $player.clipSettings.intensity, range: 0...1, format: "%.0f%%", scale: 100)
-            if carMaps.active?.isMeasured == true {
-                Toggle("Segui le posizioni della scansione", isOn: $player.clipsFollowScan)
-                Text(player.clipRetargetActive
-                     ? "Ogni LED prende il colore del punto del progetto più vicino alla sua posizione reale: le animazioni restano al loro posto anche se le strisce sono montate diversamente."
-                     : "Spento: i colori vanno per indirizzo, come nel file (giusto solo se il montaggio è uguale al progetto).")
-                    .font(.caption2).foregroundStyle(Theme.textSecondary)
-            }
             Toggle("Colore unico", isOn: $useTint)
             if useTint { ColorPicker("Colore", selection: $tint, supportsOpacity: false) }
             if player.isPlaying && player.clip != nil {
@@ -74,38 +69,31 @@ struct ClipLibraryView: View {
             if player.mode == .live {
                 if let fps = player.liveFPS { Text(String(format: "Live: %.2f fotogrammi/s", fps)).font(Theme.monoSmall) }
                 if let s = player.liveStatus { Text(s).font(.caption).foregroundStyle(Theme.warning) }
-                Text("Le animazioni sono a 24 fotogrammi/s; dal vivo ogni fotogramma viene inviato quando le centraline hanno confermato il precedente, saltando quelli intermedi. Con circa 72 comandi/s per centralina, gli effetti che cambiano tutti i LED scorrono a scatti.")
+                Text("In anteprima l'animazione scorre a 30 fotogrammi/s; dal vivo ogni fotogramma viene inviato quando le centraline hanno confermato il precedente, saltando quelli intermedi. Con circa 72 comandi/s per centralina, gli effetti che cambiano tutti i LED scorrono a scatti.")
                     .font(.caption2).foregroundStyle(Theme.textSecondary)
             } else {
                 Text("Anteprima: nessun comando Bluetooth.").font(.caption2).foregroundStyle(Theme.textSecondary)
-            }
-            if hub.controllers.count < (clips.pack?.controllerIDs.count ?? 4) {
-                Text("Il pacchetto usa 4 pacchi (A–D): A va alla 1ª centralina della lista, B alla 2ª… Quelli senza centralina non si vedono.")
-                    .font(.caption2).foregroundStyle(Theme.warning)
             }
         }
     }
 
     private var listCard: some View {
         Card(title: "Animazioni", systemImage: "sparkles.rectangle.stack") {
-            if clips.isLoading { ProgressView("Caricamento…") }
-            if let e = clips.error { Text(e).font(.caption).foregroundStyle(Theme.danger) }
-            if let pack = clips.pack {
-                TextField("Cerca", text: $search).textFieldStyle(.roundedBorder)
-                ForEach(pack.presets.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }) { p in
-                    Button { player.play(clip: p, in: pack) } label: {
-                        HStack {
-                            Image(systemName: player.clip?.id == p.id && player.isPlaying ? "speaker.wave.2.fill" : "play.circle.fill")
-                                .foregroundStyle(Theme.accent)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(p.name).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
-                                Text(String(format: "%.1f s · %@", p.duration, p.loop ? "in loop" : "una volta, resta sull'ultimo fotogramma"))
-                                    .font(.caption2).foregroundStyle(Theme.textSecondary)
-                            }
-                            Spacer()
+            TextField("Cerca", text: $search).textFieldStyle(.roundedBorder)
+            ForEach(AdaptiveEffects.presets.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }) { p in
+                Button { player.play(clip: p) } label: {
+                    HStack {
+                        Image(systemName: player.clip?.id == p.id && player.isPlaying ? "speaker.wave.2.fill" : "play.circle.fill")
+                            .foregroundStyle(Theme.accent)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(p.name).font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                            Text(String(format: "%.1f s · %@", p.duration, p.loop ? "in loop" : "una volta, resta sull'ultimo fotogramma"))
+                                .font(.caption2).foregroundStyle(Theme.textSecondary)
                         }
+                        Spacer()
                     }
                 }
+                .disabled(player.adaptive == nil)
             }
         }
     }

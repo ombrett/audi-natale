@@ -91,37 +91,3 @@ enum LayoutRegistration {
         return Fit(alignment: a, used: close, total: all.count, rms: rms)
     }
 }
-
-/// Adatta le animazioni pre-calcolate (colori per indirizzo del progetto) ai LED scansionati:
-/// ogni LED fisico prende il colore dell'indirizzo di progetto più vicino alla sua posizione reale.
-/// Le due copie a Y dello stesso pixel ricevono la media, perché fisicamente hanno un solo colore.
-enum ClipRetarget {
-    struct Source: Hashable { let controller: Int; let pixel: Int }
-
-    static func table(scanned: [EffectPoint], design: [LEDLayoutImport.Point]) -> [LEDKey: [Source]] {
-        guard !design.isEmpty else { return [:] }
-        var out: [LEDKey: [Source]] = [:]
-        for p in scanned {
-            var best = design[0], bestD = Double.infinity
-            for d in design {
-                let dd = simd_distance_squared(d.position, p.position)
-                if dd < bestD { bestD = dd; best = d }
-            }
-            out[p.key, default: []].append(Source(controller: best.controller, pixel: best.pixel))
-        }
-        return out
-    }
-
-    static func colors(_ rows: [[RGB]], table: [LEDKey: [Source]]) -> [LEDKey: RGB] {
-        var out: [LEDKey: RGB] = [:]
-        for (key, sources) in table {
-            var r = 0, g = 0, b = 0, n = 0
-            for s in sources where rows.indices.contains(s.controller) && rows[s.controller].indices.contains(s.pixel) {
-                let c = rows[s.controller][s.pixel]
-                r += Int(c.r); g += Int(c.g); b += Int(c.b); n += 1
-            }
-            if n > 0 { out[key] = RGB(r: UInt8((r + n / 2) / n), g: UInt8((g + n / 2) / n), b: UInt8((b + n / 2) / n)) }
-        }
-        return out
-    }
-}

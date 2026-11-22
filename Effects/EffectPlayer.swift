@@ -23,16 +23,14 @@ final class EffectPlayer: ObservableObject {
     @Published private(set) var lastFrameSeconds: Double?
     @Published private(set) var liveStatus: String?
     /// Animazione pre-calcolata in riproduzione (pacchetto effetti), alternativa al programma.
-    @Published private(set) var clip: FramePack.Preset?
+    /// Animazione adattiva in riproduzione (60 preset calcolati sui punti della mappa attiva).
+    @Published private(set) var clip: AdaptiveEffects.Preset?
     @Published var clipSettings = FramePack.Settings()
-    private var clipPack: FramePack?
     /// Posizione nell'animazione in secondi: accumula il tempo × velocità, così cambiare velocità non fa salti.
     private var clipPosition = 0.0
     private var lastTick = CACurrentMediaTime()
-    /// Con una mappa scansionata le animazioni del pacchetto seguono le posizioni reali dei LED.
-    @Published var clipsFollowScan = true { didSet { rebuildRetarget() } }
-    @Published private(set) var clipRetargetActive = false
-    private var retargetTable: [LEDKey: [ClipRetarget.Source]]?
+    /// Campioni della mappa attiva per le animazioni adattive (zone dal progetto o dal punto di progetto più vicino).
+    @Published private(set) var adaptive: AdaptiveEffects.Engine?
     private var map: CarMap?
 
     let hub: ControllerHub
@@ -56,7 +54,7 @@ final class EffectPlayer: ObservableObject {
         context = map.map { EffectContext(points: $0.effectPoints) }
         controllers = hub.controllers
         self.map = map
-        rebuildRetarget()
+        adaptive = map.flatMap { ProjectLayout.adaptiveEngine(map: $0, controllers: hub.controllers) }
         if !isPlaying, let program { renderPreview(program, at: 0) }
     }
 
@@ -82,12 +80,10 @@ final class EffectPlayer: ObservableObject {
         start()
     }
 
-    /// Riproduce un preset del pacchetto di animazioni pre-calcolate.
-    func play(clip p: FramePack.Preset, in pack: FramePack) {
+    /// Riproduce una delle 60 animazioni adattive.
+    func play(clip p: AdaptiveEffects.Preset) {
         playlist = nil
-        clipPack = pack
         clip = p
-        rebuildRetarget()
         clipPosition = 0
         start()
     }
@@ -98,31 +94,11 @@ final class EffectPlayer: ObservableObject {
         if !isPlaying && clip == nil { renderPreview(p, at: time) }
     }
 
-    /// Fotogramma corrente dell'animazione pre-calcolata, per pixel logico.
+    /// Fotogramma corrente dell'animazione adattiva, per pixel logico.
     private func clipColors() -> [LEDKey: RGB]? {
-        guard let clip, let clipPack else { return nil }
-        let index = FramePack.frameIndex(clip, position: clipPosition)
-        let rows = clipPack.colors(clip, frame: index, settings: clipSettings)
-        if let retargetTable { return ClipRetarget.colors(rows, table: retargetTable) }
+        guard let clip, let adaptive else { return nil }
+        let rows = adaptive.frame(clip, elapsed: clipPosition).map { $0.map { FramePack.adjust($0, clipSettings) } }
         return FramePack.keyed(rows, controllers: hub.controllers)
-    }
-
-    /// Tabella "LED scansionato → indirizzo di progetto più vicino", solo per mappe misurate e pacchetti
-    /// con la stessa struttura del layout di progetto (stessi pacchi e indirizzi).
-    private func rebuildRetarget() {
-        retargetTable = nil
-        clipRetargetActive = false
-        guard clipsFollowScan, let map, map.isMeasured, let layout = ProjectLayout.bundled else { return }
-        if let clipPack, clipPack.addressCounts != layout.controllers.map({ $0.addressCount }) { return }
-        retargetTable = ClipRetarget.table(scanned: map.effectPoints, design: layout.points)
-        clipRetargetActive = retargetTable?.isEmpty == false
-    }
-
-    func stop() {
-        isPlaying = false
-        displayTimer?.invalidate()
-        liveRunning = false
-        hub.cancelAll()
     }
 
     private func start() {
@@ -182,7 +158,7 @@ final class EffectPlayer: ObservableObject {
     private func startLive() {
         guard !liveRunning else { return }
         guard liveReady else { liveStatus = "Nessuna centralina pronta: collegale dalla schermata Centraline."; return }
-        guard clip != nil || context != nil else { liveStatus = "Serve una mappa salvata."; return }
+        guard context != nil else { liveStatus = "Serve una mappa salvata."; return }
         liveRunning = true
         frameTimes = []
         liveStatus = nil

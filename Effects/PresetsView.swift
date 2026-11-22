@@ -12,9 +12,9 @@ struct PresetsView: View {
             VStack(spacing: 14) {
                 Card(title: "Pacchetto animazioni A1", systemImage: "film.stack") {
                     NavigationLink { ClipLibraryView() } label: {
-                        Label("60 animazioni sul layout da 1600 LED", systemImage: "sparkles").font(.subheadline.weight(.semibold))
+                        Label("60 animazioni adattive", systemImage: "sparkles").font(.subheadline.weight(.semibold))
                     }
-                    Text("Animazioni pre-calcolate (24 fotogrammi/s) per i pacchi A–D, con velocità, intensità e colore regolabili.")
+                    Text("Calcolate sulla posizione e sulla zona di ogni LED della mappa attiva: dopo la scansione seguono i LED veri. Velocità, intensità e colore regolabili.")
                         .font(.caption2).foregroundStyle(Theme.textSecondary)
                 }
                 Card(title: "Effetti salvati", systemImage: "wand.and.stars") {

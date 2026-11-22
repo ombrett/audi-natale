@@ -113,6 +113,17 @@ struct FramePack {
         return out
     }
 
+    /// Intensità e colore unico applicati a un colore già calcolato.
+    static func adjust(_ c: RGB, _ settings: Settings) -> RGB {
+        let s = settings.clamped
+        if let tint = s.tint {
+            let k = Double(max(c.r, c.g, c.b)) / 255 * s.intensity
+            return RGB(r: UInt8((Double(tint.r) * k).rounded()), g: UInt8((Double(tint.g) * k).rounded()), b: UInt8((Double(tint.b) * k).rounded()))
+        }
+        if s.intensity >= 1 { return c }
+        return RGB(r: UInt8((Double(c.r) * s.intensity).rounded()), g: UInt8((Double(c.g) * s.intensity).rounded()), b: UInt8((Double(c.b) * s.intensity).rounded()))
+    }
+
     /// Converte i colori per centralina del pacchetto in colori per pixel logico dell'app:
     /// la centralina n del pacchetto va alla n-esima centralina della lista (come il layout di progetto).
     static func keyed(_ rows: [[RGB]], controllers: [ControllerConfig]) -> [LEDKey: RGB] {
