@@ -387,10 +387,10 @@ var maxW = 0.0
 for x in CarShape.stations { for p in CarShape.halfSection(x) { maxW = max(maxW, p.z) } }
 check(maxW <= CarDimensions.width / 2 + 0.01, "forma: larghezza entro 1,74 m", "\(maxW)")
 var monotoneOK = true
-let ctrl: [(Double, Double)] = [(-1.0, 0.0), (0.0, 1.0), (1.0, 1.0), (2.0, 0.0), (3.0, 0.2)]
+let profileCtrl: [(Double, Double)] = [(-1.0, 0.0), (0.0, 1.0), (1.0, 1.0), (2.0, 0.0), (3.0, 0.2)]
 for i in 0...300 {
     let x0 = -1.0 + Double(i) * 0.0133
-    let y0 = CarShape.interp(ctrl, x0)
+    let y0 = CarShape.interp(profileCtrl, x0)
     if y0 < -1e-9 || y0 > 1.0 + 1e-9 { monotoneOK = false }   // nessuna oscillazione oltre i punti
 }
 check(monotoneOK, "forma: interpolazione senza oscillazioni")
