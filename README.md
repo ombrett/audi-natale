@@ -36,21 +36,38 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 
 Il firmware più vicino analizzato (TR2309) ha buffer da **400 LED** e scrive fuori memoria, in modo persistente, oltre quel limite. Un solo controller da 1600 LED non è dimostrato: probabilmente servono più centraline (es. 4 × 400). L'app non supera 400 finché non sarà dimostrato il contrario. Dettagli in [docs/PROTOCOL.md §5](docs/PROTOCOL.md).
 
-## Guida rapida (versione 1.0)
+## Versione 2.0 — app completa
 
-1. Installa `AudiLightStudio-unsigned.ipa` con Sideloadly (vedi sotto). Chiudi l'app iDeal LED: la centralina accetta una sola connessione.
-2. **Dashboard › Collega e verifica**: trova ISP-B0717F, attende 3 s, attiva le notifiche e verifica il protocollo (`VE`). Il pulsante compare anche in Editor, Scan e Animations.
-3. **Editor**: disegna sui 200 indici (Griglia) o sulla forma reale (Mappa), con pennello, gomma, riempi, arcobaleno, gradiente e testo. Animazione Fisso/Respiro/Lampeggio, poi **Invia**. Salva i disegni come preset.
-4. **Animations** (✨ nell'Editor): effetti a due colori e scene multicolore calcolati dalla centralina, oppure **Sequenza** di preset riprodotta dal telefono.
-5. **Scan**: mappatura con la fotocamera, a strisce montate e distese. Telefono fermo, luci basse, scatto 1/1000–1/500, colore verde. Correggi in **LED Map**.
-6. **BT Lab**: diagnostica avanzata, editor HEX ed esportazione dei log.
+Flusso: **Centraline** → **Scansione** → **Mappa 3D** → **Effetti** (Anteprima, poi Live) → **Preset**.
 
-Verificato sull'impianto il 22/11/2026: connessione, chiave AES, pixel singoli, editor (≈72 comandi/s). Implementati ma ancora da provare: effetti `SGLS` 2–9, scene `MULT` con frame da 20 byte, DIY respiro/lampeggio, mappatura sull'auto, testo, sequenze.
+| Area | Cosa fa | Stato |
+|---|---|---|
+| Centraline | Più centraline insieme (testato a codice fino a 4+), nome, colore, pixel, LED per pixel (a Y), attivazione, riconnessione automatica, verifica `VE` a ogni connessione, configurazione persistente | Logica testata in CI; **verificato sull'hardware solo con 1 centralina** |
+| Identità LED | Ogni pixel = (centralina, indice). I LED a Y sono due posizioni fisiche dello stesso pixel e hanno sempre lo stesso colore | Testato in CI |
+| Scansione 3D | Procedura guidata con ARKit: codici binari su tutte le centraline insieme (1600 pixel = 11 bit, 24 fotogrammi per vista), profondità LiDAR o triangolazione da più viste, scarto delle viste mosse, copertura per centralina, salvataggio e ripresa | Ricostruzione testata in CI su dati sintetici; **da provare sull'auto** |
+| Mappa 3D | SceneKit: rotazione 360°, zoom, viste predefinite, colore carrozzeria, LED come punti, selezione con centralina/pixel/posizione/affidabilità/LED gemelli, filtri per centralina e zona, colorazione per effetto/centralina/affidabilità, correzione e allineamento | Compila; **da provare** |
+| Modello dell'auto | **Provvisorio**: forme semplici con le misure dell'A1 Sportback 2020, sempre indicato come tale. Importazione di un file USDZ/SCN reale | Il modello fedele richiede un asset con licenza (non incluso) |
+| Motore effetti | 9 effetti calcolati sulle coordinate spaziali (statico, arcobaleno, onde, scansione avanti/dietro e sinistra/destra, meteora, pulsazione, scintillio, accensione progressiva), livelli per zona o selezione, pittura, gradienti | Testato in CI |
+| Anteprima / Live | Anteprima a 30 fps senza Bluetooth; Live invia ogni fotogramma a tutte le centraline e misura i fotogrammi/s reali | Live **da provare**: con il protocollo attuale gli effetti che cambiano tutti i LED scorrono a scatti (circa 72 comandi/s per centralina) |
+| Preset | Effetti salvati e playlist | Compila; da provare |
+| Strumenti avanzati | Bluetooth Lab, editor e scansione 2D, effetti interni della centralina (versione 1) | Verificati in parte sull'hardware (vedi sotto) |
+
+Mappa dimostrativa: dalla Mappa 3D si può generare una disposizione di prova per esplorare l'interfaccia prima della scansione; è sempre etichettata "MAPPA DIMOSTRATIVA".
+
+### Blocchi reali
+
+1. **Modello 3D fedele dell'Audi A1:** serve un file USDZ/SCN con licenza d'uso; l'app lo importa, ma non posso fornirlo.
+2. **Più centraline:** codice e test pronti, ma verificati sull'hardware con una sola centralina.
+3. **Live fluido:** il protocollo verificato aggiorna un pixel per comando; l'invio in blocco `DOOT` sarebbe più veloce ma non è catturato con pacchetti da 20 byte.
 
 ## Struttura
 
 ```
-App/          entry point, tab, tema
+App/          entry point, barra a 7 sezioni, tema
+Hub/          ControllerHub + ControllerLink (più centraline)
+Scan3D/       scansione AR guidata
+Studio3D/     SceneKit: modello, nuvola di LED, Mappa 3D
+Effects/      riproduzione Anteprima/Live, Studio Effetti, Preset
 BLE/          BLEManager (CoreBluetooth), IdealController (protocollo + ack), PacketLog
 Logic/        Hex, AES (CommonCrypto), encoder/decoder iDeal, policy di sicurezza — senza UI
 Persistence/  AppSettings (UserDefaults)
