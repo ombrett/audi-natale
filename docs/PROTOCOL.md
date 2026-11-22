@@ -11,6 +11,35 @@ Legenda usata in tutto il documento:
 - **DEDOTTO** — conclusione ragionata dalle fonti, non osservata sul nostro controller.
 - **DA VERIFICARE** — serve una prova fisica su ISP-B0717F.
 
+## 0. Verificato su ISP-B0717F (22/11/2026, iPhone, Audi Light Studio 0.1.0)
+
+| Dato | Valore osservato |
+|---|---|
+| Modello (descrittore 2901 su …9600) | `TR2309R012-01` |
+| `VE 00` | `V023.09.12.1` |
+| `VE 01` | `V122.12.02.1` |
+| Max Write Without Response | **20 byte** (MTU 23, non alzata dal controller) |
+| Max Write con risposta | 512 byte (scrittura lunga; supporto lato controller DA VERIFICARE) |
+| Tabella GATT | identica a nRF Connect: FFF0 (…9600, …960A, …960B, …9601), FD00, AE00 |
+
+Comandi **VERIFICATI SUL DISPOSITIVO** (byte inviati e ack ricevuto):
+
+| Comando | Risposta decifrata | Latenza |
+|---|---|---|
+| `VE 00` / `VE 01` | `0D 'V023.09.12.1'`, `0D 'V122.12.02.1'` | 53 ms, 84 ms |
+| `DEN 00` | nessun ack (come documentato) | — |
+| `DOOD` indice 0 rosso, luminosità 50 | `06 'DOODOK' 00` + coda tabella | 65 ms |
+| `DOOD` indice 0 blu | `06 'DOODOK'` | 45 ms |
+
+Esito visivo riferito dall'utente: si accende solo il primo LED, rosso e poi blu.
+
+Conseguenze:
+
+- Chiave AES, formato `DOOD` e indice big-endian confermati: il LED fisico 1 è l'indice 0.
+- Il firmware è della famiglia **TR2309**, la stessa dell'immagine `TR2309R002-02` analizzata da glowmote. Il limite di **400 LED per centralina** è quindi molto probabile anche qui (variante R012, non ancora disassemblata).
+- Con MTU 23 i frame bulk `DOOT` su …960A devono stare in 20 byte (l'app vendor usa frame corti quando l'MTU non è alta): da implementare e verificare nella Milestone 2.
+- Un `DOOD` per pixel con attesa dell'ack richiede ~50–65 ms: circa 15–20 pixel/s. Per i disegni completi serve `DOOT`.
+
 ## 1. Compatibilità con ISP-B0717F
 
 | Punto | Stato | Note |
@@ -18,7 +47,7 @@ Legenda usata in tutto il documento:
 | Nome `ISP-*` gestito da entrambi i progetti | DOCUMENTATO | `NAME_ARRAY = ["ISP-", "IDL-"]` (idealLED), `NAME_PREFIXES` (glowmote). |
 | Stessa tabella GATT (FFF0 con …9600/…9601/…960A/…960B, FD00, AE00) | DOCUMENTATO + osservato | La tabella rilevata con nRF Connect coincide con quella di glowmote per `ISP-50542B`. |
 | Famiglia firmware | DEDOTTO | glowmote: le immagini `TR2202` in poi con nome `ISP-` usano questo protocollo; `IDL-` `TR2107/TR2110` usano un altro set di comandi. Le versioni rilevate dall'app iDeal LED (HW 22.12.02.1, FW 23.09.12.1) hanno lo stesso formato delle risposte `VE 00` = `V0…` e `VE 01` = `V1…` (es. `V024.11.03.7` / `V124.11.66.1`). FW 23.09.x è coetaneo dell'immagine `TR2309R002-02` analizzata da glowmote. |
-| Stessa chiave AES | DA VERIFICARE | Il Bluetooth Lab invia `VE 00` (richiesta di sola lettura) e considera confermato il protocollo solo se la notifica decifrata è una stringa `V…`. |
+| Stessa chiave AES | VERIFICATO (§0) | Il Bluetooth Lab invia `VE 00` (richiesta di sola lettura) e considera confermato il protocollo solo se la notifica decifrata è una stringa `V…`. |
 | App iDeal LED 4.0.7 | DEDOTTO | Le fonti hanno decompilato `com.tech.idealled` (8none1) e `com.winkison.ledlight` 3.1.7 (glowmote): stessi tag e stessa chiave. La versione 4.0.7 non è stata analizzata. |
 
 ## 2. Caratteristiche

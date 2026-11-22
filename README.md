@@ -8,8 +8,8 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 
 | Milestone | Contenuto | Stato reale |
 |---|---|---|
-| 1 | Progetto SwiftUI, Bluetooth Lab, connessione, diagnostica, log, HEX, build CI | Implementata. Compilazione affidata a GitHub Actions (macOS). **Da provare sull'auto.** |
-| 2 | Protocollo verificato, primo pixel, più pixel, disegni | Encoder `TURN`/`VE`/`DEN`/`DOOD`/`DSTOP` scritti e testati sui vettori pubblicati. Test primo pixel implementato ma **bloccato finché il controller non risponde a `VE`**. Più pixel e `DOOT` non ancora nell'interfaccia. |
+| 1 | Progetto SwiftUI, Bluetooth Lab, connessione, diagnostica, log, HEX, build CI | **Completata e provata** sull'auto il 22/11/2026 (build CI verde, 67 test). |
+| 2 | Protocollo verificato, primo pixel, più pixel, disegni | Encoder `TURN`/`VE`/`DEN`/`DOOD`/`DSTOP` scritti e testati sui vettori pubblicati. **Primo pixel rosso → blu verificato su ISP-B0717F** (`DOODOK`, vedi [PROTOCOL.md §0](docs/PROTOCOL.md)). Più pixel e `DOOT` non ancora nell'interfaccia. |
 | 3 | Mappatura con fotocamera | Non iniziata (schermata segnaposto) |
 | 4 | Editor, animazioni, 1600 LED | Non iniziata (schermata segnaposto) |
 
