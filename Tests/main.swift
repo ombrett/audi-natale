@@ -196,6 +196,45 @@ for p in mapped {
 check(positionsOK, "mappatura sintetica: posizioni coerenti con gli indici")
 check(BlobDetector.detect(GrayImage(width: 10, height: 10, fill: 30)).isEmpty, "blob: immagine uniforme senza punti")
 
+// LED fusi nell'immagine (2,5 px di distanza): la decodifica per pixel li separa
+let plan8 = MappingPlan(ledCount: 8)
+let merged: [(Int, Double, Double)] = [(3, 20, 10), (4, 22.5, 10), (6, 40, 10)]
+func renderMerged(_ frame: MappingPlan.Frame) -> GrayImage {
+    var img = GrayImage(width: 60, height: 20, fill: 25)
+    for (i, lx, ly) in merged where plan8.isOn(index: i, in: frame) {
+        for y in 0..<20 { for x in 0..<60 {
+            let d2 = (Double(x) - lx) * (Double(x) - lx) + (Double(y) - ly) * (Double(y) - ly)
+            img[x, y] = min(255, img[x, y] + Float(180 * exp(-d2 / 2.0)))
+        } }
+    }
+    return img
+}
+var mergedFrames: [MappingPlan.Frame: GrayImage] = [:]
+for f in plan8.frames { mergedFrames[f] = renderMerged(f) }
+let mergedPts = MappingDecoder.decode(plan: plan8, frames: mergedFrames)
+let mergedIdx = Set(mergedPts.compactMap { $0.index })
+check(mergedIdx == [3, 4, 6], "mappatura: LED fusi separati per codice", "\(mergedPts.map { ($0.index ?? -1, Int($0.x * 59)) })")
+
+// Riflesso debole di un LED: scartato se esistono già le copie attese
+let plan4 = MappingPlan(ledCount: 4)
+func renderReflect(_ frame: MappingPlan.Frame) -> GrayImage {
+    var img = GrayImage(width: 60, height: 20, fill: 20)
+    let spots: [(Double, Double, Float)] = [(10, 5, 180), (30, 5, 180), (50, 15, 25)]   // 2 copie + riflesso
+    if plan4.isOn(index: 1, in: frame) {
+        for (lx, ly, amp) in spots {
+            for y in 0..<20 { for x in 0..<60 {
+                let d2 = (Double(x) - lx) * (Double(x) - lx) + (Double(y) - ly) * (Double(y) - ly)
+                img[x, y] += amp * Float(exp(-d2 / 2.0))
+            } }
+        }
+    }
+    return img
+}
+var reflFrames: [MappingPlan.Frame: GrayImage] = [:]
+for f in plan4.frames { reflFrames[f] = renderReflect(f) }
+let reflPts = MappingDecoder.decode(plan: plan4, frames: reflFrames).filter { $0.index == 1 }
+check(reflPts.count == 2, "mappatura: riflesso debole scartato", "\(reflPts.count)")
+
 print("\n\(passed) superati, \(failures) falliti")
 if let dir = CommandLine.arguments.dropFirst().first {
     try? "\(passed) superati, \(failures) falliti\n".write(toFile: dir + "/logic-summary.txt", atomically: true, encoding: .utf8)

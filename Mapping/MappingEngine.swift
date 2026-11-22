@@ -39,7 +39,7 @@ final class MappingEngine: ObservableObject {
     private var onColor: RGB = .green
 
     /// Attesa dopo la conferma dell'ultimo DOOD prima di catturare (latenza di aggiornamento LED + sensore).
-    var settleDelay: TimeInterval = 0.35
+    var settleDelay: TimeInterval = 0.6
     var framesPerCapture = 3
 
     init(ideal: IdealController, camera: CameraCapture, settings: AppSettings) {
@@ -106,7 +106,7 @@ final class MappingEngine: ObservableObject {
             if let error { self.fail(error); return }
             DispatchQueue.main.asyncAfter(deadline: .now() + self.settleDelay) {
                 guard !self.cancelled else { return }
-                self.camera.grab(count: self.framesPerCapture, snapshot: frame == .allOn) { img, cg in
+                self.camera.grab(count: self.framesPerCapture, skip: 3, snapshot: frame == .allOn) { img, cg in
                     guard !self.cancelled else { return }
                     guard let img else { self.fail("Fotogramma non catturato"); return }
                     self.frames[frame] = img

@@ -83,7 +83,7 @@ struct ScanScreen: View {
     @ObservedObject var engine: MappingEngine
     @ObservedObject var camera: CameraCapture
     @State private var sectionName = ""
-    @State private var shutterIndex = 2
+    @State private var shutterIndex = 0
     @State private var colorIndex = 0
     @State private var savedName: String?
 
@@ -165,7 +165,7 @@ struct ScanScreen: View {
         Card(title: "Per un buon risultato", systemImage: "lightbulb") {
             VStack(alignment: .leading, spacing: 6) {
                 Text("• Telefono fermo per tutta la sequenza (appoggialo o usa un supporto).")
-                Text("• Abbassa le luci della stanza ed evita superfici a specchio.")
+                Text("• Abbassa le luci ed evita superfici lucide: le piastrelle riflettono i LED. Meglio inquadrare dall'alto che di traverso.")
                 Text("• Inquadra il tratto di striscia da vicino: i LED devono restare separati nell'immagine.")
                 Text("• Se i LED appaiono bruciati (bianchi pieni) usa un tempo più breve; se non si vedono, più lungo.")
                 Text("• Con il cablaggio a Y ogni indice compare due volte se inquadri entrambe le file.")
