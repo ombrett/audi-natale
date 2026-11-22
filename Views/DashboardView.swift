@@ -10,16 +10,19 @@ struct DashboardView: View {
         ScrollView {
             VStack(spacing: 16) {
                 hero
+                Card(title: "Connessione", systemImage: "bolt.horizontal") {
+                    QuickConnectView()
+                }
                 Card(title: "Controller", systemImage: "cpu") {
                     info("Atteso", settings.targetName)
                     info("Connesso", ble.connectedName ?? "—")
                     info("Modello (2901)", ideal.modelString ?? "—")
                     info("Versioni", ideal.versions.isEmpty ? "—" : ideal.versions.sorted { $0.key < $1.key }.map { $0.value }.joined(separator: " · "))
                     info("Protocollo", ideal.protocolConfirmed ? "AES iDeal confermato" : "da verificare")
-                    Button("Apri Bluetooth Lab") { tab = .lab }
-                        .buttonStyle(AccentButtonStyle())
+                    Button("Diagnostica avanzata (Bluetooth Lab)") { tab = .lab }
+                        .buttonStyle(AccentButtonStyle(filled: false))
                 }
-                Card(title: "Milestone", systemImage: "flag.checkered") {
+                Card(title: "Stato del progetto", systemImage: "flag.checkered") {
                     milestone("1", "Bluetooth Lab, diagnostica, log, HEX, build CI", state: "Completata e verificata su ISP-B0717F")
                     milestone("2", "Protocollo verificato, primo pixel, più pixel, disegni", state: "Verificata: editor 200 LED, ~72 comandi/s")
                     milestone("3", "Mappatura con fotocamera", state: "Implementata (codifica binaria 18 fotogrammi, correzione manuale) — da provare")

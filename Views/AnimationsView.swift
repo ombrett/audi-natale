@@ -170,9 +170,7 @@ struct AnimationsView: View {
             } label: { Label(busy ? "Invio…" : "Avvia sulla centralina", systemImage: "play.fill") }
                 .buttonStyle(AccentButtonStyle())
                 .enabled(ideal.canDraw && !busy)
-            if !ideal.canDraw {
-                Text("Collega il controller e completa la verifica nel Bluetooth Lab.").font(.caption).foregroundStyle(Theme.warning)
-            }
+            if !ideal.canDraw { QuickConnectView(compact: true) }
             Text("Con il cablaggio a Y l'effetto scorre uguale su entrambe le file. L'effetto resta attivo anche a telefono spento.")
                 .font(.caption2).foregroundStyle(Theme.textSecondary)
         }

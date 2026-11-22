@@ -246,10 +246,7 @@ struct EditorView: View {
 
     private var sendCard: some View {
         Card(title: "Invio", systemImage: "paperplane") {
-            if !ideal.canDraw {
-                Text("Collega il controller e completa la verifica nel Bluetooth Lab (notifiche + versione).")
-                    .font(.caption).foregroundStyle(Theme.warning)
-            }
+            if !ideal.canDraw { QuickConnectView(compact: true) }
             Toggle("Live: invia a ogni tratto", isOn: $live).font(.subheadline)
             Stepper("Finestra di invio: \(settings.sendWindow)", value: $settings.sendWindow, in: 1...8)
                 .font(.subheadline)

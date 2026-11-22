@@ -36,6 +36,17 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 
 Il firmware più vicino analizzato (TR2309) ha buffer da **400 LED** e scrive fuori memoria, in modo persistente, oltre quel limite. Un solo controller da 1600 LED non è dimostrato: probabilmente servono più centraline (es. 4 × 400). L'app non supera 400 finché non sarà dimostrato il contrario. Dettagli in [docs/PROTOCOL.md §5](docs/PROTOCOL.md).
 
+## Guida rapida (versione 1.0)
+
+1. Installa `AudiLightStudio-unsigned.ipa` con Sideloadly (vedi sotto). Chiudi l'app iDeal LED: la centralina accetta una sola connessione.
+2. **Dashboard › Collega e verifica**: trova ISP-B0717F, attende 3 s, attiva le notifiche e verifica il protocollo (`VE`). Il pulsante compare anche in Editor, Scan e Animations.
+3. **Editor**: disegna sui 200 indici (Griglia) o sulla forma reale (Mappa), con pennello, gomma, riempi, arcobaleno, gradiente e testo. Animazione Fisso/Respiro/Lampeggio, poi **Invia**. Salva i disegni come preset.
+4. **Animations** (✨ nell'Editor): effetti a due colori e scene multicolore calcolati dalla centralina, oppure **Sequenza** di preset riprodotta dal telefono.
+5. **Scan**: mappatura con la fotocamera, a strisce montate e distese. Telefono fermo, luci basse, scatto 1/1000–1/500, colore verde. Correggi in **LED Map**.
+6. **BT Lab**: diagnostica avanzata, editor HEX ed esportazione dei log.
+
+Verificato sull'impianto il 22/11/2026: connessione, chiave AES, pixel singoli, editor (≈72 comandi/s). Implementati ma ancora da provare: effetti `SGLS` 2–9, scene `MULT` con frame da 20 byte, DIY respiro/lampeggio, mappatura sull'auto, testo, sequenze.
+
 ## Struttura
 
 ```

@@ -154,10 +154,7 @@ struct ScanScreen: View {
             }
             Text("\(settings.ledCount) LED → \(engine.plannedFrames) fotogrammi (riferimenti + bit e complementari). Circa 3 s ciascuno.")
                 .font(.caption2).foregroundStyle(Theme.textSecondary)
-            if !ideal.canDraw {
-                Text("Prima collega il controller e completa la verifica nel Bluetooth Lab.")
-                    .font(.caption).foregroundStyle(Theme.warning)
-            }
+            if !ideal.canDraw { QuickConnectView(compact: true) }
         }
     }
 

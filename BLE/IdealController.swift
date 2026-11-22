@@ -209,6 +209,129 @@ final class IdealController: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
     }
 
+    // MARK: Connessione rapida
+
+    enum QuickStep: Equatable {
+        case idle, finding, connecting, settling, subscribing, verifying
+        var label: String {
+            switch self {
+            case .idle: return ""
+            case .finding: return "Ricerca della centralina…"
+            case .connecting: return "Connessione…"
+            case .settling: return "Attesa post-connessione…"
+            case .subscribing: return "Attivazione notifiche…"
+            case .verifying: return "Verifica protocollo (VE)…"
+            }
+        }
+    }
+
+    @Published private(set) var quickStep: QuickStep = .idle
+    @Published private(set) var quickMessage: String?
+    private var quickTimer: Timer?
+    private var quickStepAt = Date()
+    private var quickScanned = false
+
+    /// Un tocco: trova o riconnette la centralina, attende l'assestamento, attiva le notifiche e
+    /// verifica il protocollo con VE. Ogni scrittura parte da questa azione esplicita dell'utente.
+    func quickConnect() {
+        guard quickStep == .idle else { return }
+        quickMessage = nil
+        quickScanned = false
+        if ble.phase == .ready || ble.phase == .connecting || ble.phase == .discovering || ble.phase == .reconnecting {
+            quickGo(ble.phase == .ready ? .settling : .connecting)
+        } else if settings.lastPeripheralID != nil {
+            ble.reconnectLast()
+            quickGo(.connecting)
+        } else {
+            quickScanned = true
+            ble.startScan(duration: 15)
+            quickGo(.finding)
+        }
+        quickTimer?.invalidate()
+        quickTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in self?.quickTick() }
+    }
+
+    func cancelQuickConnect() {
+        quickTimer?.invalidate()
+        quickStep = .idle
+    }
+
+    private func quickGo(_ step: QuickStep) {
+        quickStep = step
+        quickStepAt = Date()
+    }
+
+    private func quickTick() {
+        let elapsed = Date().timeIntervalSince(quickStepAt)
+        switch quickStep {
+        case .idle:
+            quickTimer?.invalidate()
+        case .finding:
+            if let d = ble.devices.values.first(where: { $0.name == settings.targetName }) {
+                ble.connect(d.id)
+                quickGo(.connecting)
+            } else if elapsed > 15 {
+                quickFail("\(settings.targetName) non trovata. Chiudi l'app iDeal LED e controlla l'alimentazione.")
+            }
+        case .connecting:
+            if ble.phase == .ready {
+                quickGo(.settling)
+            } else if case .failed = ble.phase, !quickScanned {
+                quickScanned = true
+                ble.startScan(duration: 15)
+                quickGo(.finding)
+            } else if elapsed > 15 {
+                if !quickScanned {
+                    quickScanned = true
+                    ble.disconnect()
+                    ble.startScan(duration: 15)
+                    quickGo(.finding)
+                } else {
+                    quickFail("Connessione non riuscita.")
+                }
+            }
+        case .settling:
+            if ble.phase != .ready { quickGo(.connecting); return }
+            guard ble.isSettled else { return }
+            if ble.characteristicInfo(IdealUUID.notify)?.isNotifying == true {
+                quickVerify()
+            } else {
+                subscribeNotifications()
+                quickGo(.subscribing)
+            }
+        case .subscribing:
+            if ble.characteristicInfo(IdealUUID.notify)?.isNotifying == true {
+                quickVerify()
+            } else if elapsed > 4 {
+                quickFail("Le notifiche su …9601 non si attivano.")
+            }
+        case .verifying:
+            if protocolConfirmed {
+                quickTimer?.invalidate()
+                quickStep = .idle
+                quickMessage = "Pronto: \(deviceName) \(versions.sorted { $0.key < $1.key }.map { $0.value }.joined(separator: " · "))"
+            } else if elapsed > 4 {
+                quickFail("Nessuna risposta alla verifica VE.")
+            }
+        }
+    }
+
+    private func quickVerify() {
+        if protocolConfirmed {
+            quickGo(.verifying)
+        } else {
+            queryVersions()
+            quickGo(.verifying)
+        }
+    }
+
+    private func quickFail(_ reason: String) {
+        quickTimer?.invalidate()
+        quickStep = .idle
+        quickMessage = reason
+        log.add(.error, nil, "Connessione rapida: \(reason)")
+    }
+
     // MARK: Più pixel (Milestone 2)
 
     var canDraw: Bool { transportReady && protocolConfirmed && ble.isSettled }
