@@ -1,0 +1,14 @@
+*.xcodeproj
+build/
+DerivedData/
+Payload/
+*.ipa
+*.xcarchive
+*.xcarchive.zip
+logictests
+ci-out/
+.DS_Store
+xcuserdata/
+*.p12
+*.mobileprovision
+*.cer

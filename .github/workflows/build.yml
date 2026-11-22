@@ -1,0 +1,106 @@
+name: Build iOS
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    env:
+      HAS_SIGNING: ${{ secrets.BUILD_CERTIFICATE_BASE64 != '' && secrets.BUILD_PROVISION_PROFILE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode version
+        run: xcodebuild -version
+
+      - name: Logic tests (protocol, AES vectors, safety policy)
+        run: |
+          set -o pipefail
+          mkdir -p ci-out
+          swiftc -swift-version 5 -O -o logictests Logic/*.swift Tests/main.swift 2>&1 | tee ci-out/logic-build.log
+          ./logictests ci-out 2>&1 | tee ci-out/logic-tests.txt
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Archive (unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild -project AudiLightStudio.xcodeproj -scheme AudiLightStudio -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$PWD/build/AudiLightStudio.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            archive 2>&1 | tee ci-out/build.log
+
+      - name: Show compile errors
+        if: failure()
+        run: |
+          grep -n -E "error:|will be an error|BUILD FAILED|ARCHIVE FAILED" ci-out/build.log | head -150 || true
+
+      - name: Package unsigned IPA (for Sideloadly)
+        run: |
+          APP=$(find build/AudiLightStudio.xcarchive/Products/Applications -maxdepth 1 -name "*.app" | head -1)
+          test -n "$APP"
+          plutil -p "$APP/Info.plist" | grep -E "NSBluetooth|NSCamera|CFBundleIdentifier|MinimumOSVersion"
+          rm -rf Payload && mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry AudiLightStudio-unsigned.ipa Payload
+          (cd build && zip -qry ../AudiLightStudio.xcarchive.zip AudiLightStudio.xcarchive)
+          ls -la *.ipa *.zip
+
+      # Firma opzionale: si attiva solo se i secret sono configurati nel repository.
+      # Nessun certificato o password è salvato nel codice.
+      - name: Signed IPA (optional)
+        id: signed
+        if: ${{ env.HAS_SIGNING == 'true' }}
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+          TEAM_ID: ${{ secrets.TEAM_ID }}
+          EXPORT_METHOD: ${{ secrets.EXPORT_METHOD }}
+        run: ./ci/sign.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AudiLightStudio-unsigned-ipa
+          path: AudiLightStudio-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        if: steps.signed.outcome == 'success'
+        with:
+          name: AudiLightStudio-signed-ipa
+          path: AudiLightStudio-signed.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AudiLightStudio-xcarchive
+          path: AudiLightStudio.xcarchive.zip
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ci-logs
+          path: ci-out
+
+      - name: Publish download (main only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          FILES="AudiLightStudio-unsigned.ipa"
+          if [ -f AudiLightStudio-signed.ipa ]; then FILES="$FILES AudiLightStudio-signed.ipa"; fi
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest $FILES --prerelease --title "Audi Light Studio (ultima build)" \
+            --notes "Build ${{ github.sha }}. IPA non firmato: installalo con Sideloadly, che lo firma con il tuo Apple ID." \
+            --target "${{ github.sha }}"
