@@ -9,7 +9,7 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 | Milestone | Contenuto | Stato reale |
 |---|---|---|
 | 1 | Progetto SwiftUI, Bluetooth Lab, connessione, diagnostica, log, HEX, build CI | **Completata e provata** sull'auto il 22/11/2026 (build CI verde, 67 test). |
-| 2 | Protocollo verificato, primo pixel, più pixel, disegni | Encoder `TURN`/`VE`/`DEN`/`DOOD`/`DSTOP` scritti e testati sui vettori pubblicati. **Primo pixel rosso → blu verificato su ISP-B0717F** (`DOODOK`, vedi [PROTOCOL.md §0](docs/PROTOCOL.md)). Più pixel e `DOOT` non ancora nell'interfaccia. |
+| 2 | Protocollo verificato, primo pixel, più pixel, disegni | Primo pixel **verificato**. Editor 200 LED con invio `DOOD` confermato pixel per pixel e preset: **da provare sull'auto**. `DOOT` in blocco disattivato finché non è catturato con MTU 23. |
 | 3 | Mappatura con fotocamera | Non iniziata (schermata segnaposto) |
 | 4 | Editor, animazioni, 1600 LED | Non iniziata (schermata segnaposto) |
 
@@ -28,7 +28,11 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 - Bloccati: tag sconosciuti, `TEST`, `CT`, `LAMPN`, `LAMPT`, `SPLAY`, `CHECKLINE`…, indici pixel ≥ 400, valori fuori dai limiti trovati nel firmware.
 - Nessuna funzione OTA, firmware o reset di fabbrica.
 
-## ⚠️ 1600 LED
+## Impianto reale
+
+2 file da 20 m × 200 LED (WS2812B, 10 LED/m) collegate **a Y sulla stessa linea dati**: 200 indici, ogni indice accende lo stesso LED su entrambe le file. Verificato il 22/11/2026.
+
+## ⚠️ Limite 400 LED
 
 Il firmware più vicino analizzato (TR2309) ha buffer da **400 LED** e scrive fuori memoria, in modo persistente, oltre quel limite. Un solo controller da 1600 LED non è dimostrato: probabilmente servono più centraline (es. 4 × 400). L'app non supera 400 finché non sarà dimostrato il contrario. Dettagli in [docs/PROTOCOL.md §5](docs/PROTOCOL.md).
 
