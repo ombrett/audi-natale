@@ -135,6 +135,67 @@ for op in altPlan { PixelPlanner.apply(op, to: &s2) }
 check(s2 == alt, "plan: alternato corretto")
 check(PixelPlanner.mostFrequent([.red, .blue, .blue]) == .blue, "colore più frequente")
 
+// MARK: Mappatura — codifica
+let plan200 = MappingPlan(ledCount: 200)
+check(plan200.bits == 8, "mappatura: 8 bit per 200 LED", "\(plan200.bits)")
+check(plan200.frames.count == 18, "mappatura: 18 fotogrammi per 200 LED")
+check(MappingPlan(ledCount: 400).bits == 9, "mappatura: 9 bit per 400 LED")
+check(MappingPlan(ledCount: 255).bits == 8 && MappingPlan(ledCount: 256).bits == 9, "mappatura: confine 255/256")
+var allCodesUnique = Set<Int>()
+for i in 0..<200 { allCodesUnique.insert(MappingPlan.code(forIndex: i)) }
+check(allCodesUnique.count == 200 && !allCodesUnique.contains(0), "mappatura: codici unici, mai 0")
+check(plan200.pattern(for: .allOn, on: .green).allSatisfy { $0 == .green }, "mappatura: tutto acceso")
+for i in [0, 1, 99, 199] {
+    let pairs: [(Float, Float)] = (0..<plan200.bits).map { b in
+        plan200.isOn(index: i, in: .bit(b, inverted: false)) ? (200, 10) : (10, 200)
+    }
+    check(plan200.decode(pairs).index == i, "mappatura: decodifica indice \(i)")
+}
+check(plan200.decode([(100, 98)] + Array(repeating: (200, 10), count: 7)).index == nil, "mappatura: bit indeciso scartato")
+check(plan200.decode(Array(repeating: (200, 10), count: 8)).index == nil, "mappatura: codice 255 fuori range scartato")
+
+// MARK: Mappatura — immagini sintetiche (2 file a Y: ogni indice in due posizioni)
+struct LCG { var s: UInt64; mutating func next() -> Float { s = s &* 6364136223846793005 &+ 1442695040888963407; return Float(s >> 40) / Float(1 << 24) } }
+let W = 260, H = 60
+var ledPositions: [(Int, Double, Double)] = []
+for i in 0..<40 {
+    ledPositions.append((i, 5 + Double(i) * 6.2, 15))   // fila 1
+    ledPositions.append((i, 5 + Double(i) * 6.2, 45))   // fila 2, stesso indice
+}
+let plan40 = MappingPlan(ledCount: 40)
+var rng = LCG(s: 42)
+func render(_ frame: MappingPlan.Frame) -> GrayImage {
+    var img = GrayImage(width: W, height: H)
+    for y in 0..<H { for x in 0..<W { img[x, y] = 20 + Float(x) * 0.1 + rng.next() * 6 } }   // ambiente + rumore
+    // riflesso fisso sul pavimento, presente in tutti i fotogrammi
+    for y in 28...32 { for x in 100...140 { img[x, y] += 60 } }
+    for (i, lx, ly) in ledPositions where plan40.isOn(index: i, in: frame) {
+        for y in max(0, Int(ly) - 3)...min(H - 1, Int(ly) + 3) {
+            for x in max(0, Int(lx) - 3)...min(W - 1, Int(lx) + 3) {
+                let d2 = (Double(x) - lx) * (Double(x) - lx) + (Double(y) - ly) * (Double(y) - ly)
+                img[x, y] = min(255, img[x, y] + Float(180 * exp(-d2 / 2.0)))
+            }
+        }
+    }
+    return img
+}
+var synthetic: [MappingPlan.Frame: GrayImage] = [:]
+for f in plan40.frames { synthetic[f] = render(f) }
+let mapped = MappingDecoder.decode(plan: plan40, frames: synthetic)
+let summary = MappingDecoder.summarize(mapped, ledCount: 40)
+check(mapped.count == 80, "mappatura sintetica: 80 punti trovati", "\(mapped.count)")
+check(summary.decoded == 80, "mappatura sintetica: tutti decodificati", "\(summary.decoded)")
+check(summary.missing.isEmpty, "mappatura sintetica: nessun indice mancante", "\(summary.missing)")
+check(summary.duplicatedIndices == 40 && summary.conflicts == 0, "mappatura sintetica: ogni indice due volte (Y)")
+var positionsOK = true
+for p in mapped {
+    guard let i = p.index else { positionsOK = false; continue }
+    let expectedX = (5 + Double(i) * 6.2) / Double(W - 1)
+    if abs(p.x - expectedX) > 0.01 { positionsOK = false }
+}
+check(positionsOK, "mappatura sintetica: posizioni coerenti con gli indici")
+check(BlobDetector.detect(GrayImage(width: 10, height: 10, fill: 30)).isEmpty, "blob: immagine uniforme senza punti")
+
 print("\n\(passed) superati, \(failures) falliti")
 if let dir = CommandLine.arguments.dropFirst().first {
     try? "\(passed) superati, \(failures) falliti\n".write(toFile: dir + "/logic-summary.txt", atomically: true, encoding: .utf8)

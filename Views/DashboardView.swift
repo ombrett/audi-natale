@@ -21,8 +21,8 @@ struct DashboardView: View {
                 }
                 Card(title: "Milestone", systemImage: "flag.checkered") {
                     milestone("1", "Bluetooth Lab, diagnostica, log, HEX, build CI", state: "Completata e verificata su ISP-B0717F")
-                    milestone("2", "Protocollo verificato, primo pixel, più pixel, disegni", state: "Primo pixel verificato; editor 200 LED con DOOD confermati da provare. DOOT in blocco: in attesa di cattura")
-                    milestone("3", "Mappatura con fotocamera", state: "Non iniziata")
+                    milestone("2", "Protocollo verificato, primo pixel, più pixel, disegni", state: "Verificata: editor 200 LED, ~72 comandi/s")
+                    milestone("3", "Mappatura con fotocamera", state: "Implementata (codifica binaria 18 fotogrammi, correzione manuale) — da provare")
                     milestone("4", "Editor avanzato, animazioni, 1600 LED", state: "Non iniziata")
                 }
                 Card(title: "Schermate", systemImage: "square.grid.2x2") {

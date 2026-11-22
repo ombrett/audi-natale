@@ -35,41 +35,6 @@ struct PlannedScreen: View {
     }
 }
 
-struct ScanView: View {
-    var body: some View {
-        PlannedScreen(
-            title: "Scan", milestone: "3", systemImage: "camera.viewfinder",
-            summary: "Mappatura automatica: la fotocamera inquadra una sezione dell'auto mentre l'app accende sequenze controllate di LED e ne ricava le posizioni.",
-            steps: [
-                "Selezione della sezione dell'auto e del controller.",
-                "Fotogrammi di riferimento tutto spento / tutto acceso per soglie e riflessi.",
-                "Codifica binaria degli indici: 11 bit per 1600 LED più bit di parità e ripetizioni, con pattern e complementi (non bastano 11 foto).",
-                "Attesa dell'ack DOOT/DOOD e compensazione della latenza BLE prima di ogni scatto.",
-                "Rilevamento dei blob con Vision/CoreImage e associazione all'indice.",
-                "Mappa 2D per inquadratura, correzione manuale, unione delle sezioni.",
-            ],
-            dependency: "Richiede il controllo verificato di più pixel (Milestone 2)."
-        )
-        .toolbar { NavigationLink("LED Map") { LEDMapView() } }
-    }
-}
-
-struct LEDMapView: View {
-    var body: some View {
-        PlannedScreen(
-            title: "LED Map", milestone: "3", systemImage: "point.3.connected.trianglepath.dotted",
-            summary: "Mappe 2D per inquadratura e mappa complessiva. Una ricostruzione 3D richiederà più viste calibrate: con una sola vista la mappa resta una proiezione 2D e verrà indicata così.",
-            steps: [
-                "Mappa per sezione con coordinate normalizzate e confidenza per LED.",
-                "Editor di correzione: sposta, scambia, segna come non visibile.",
-                "Unione delle sezioni nella disposizione complessiva dell'auto.",
-                "Indice globale = (controller, indice locale) per installazioni con più centraline.",
-            ],
-            dependency: "Richiede la scansione (Milestone 3)."
-        )
-    }
-}
-
 struct AnimationsView: View {
     var body: some View {
         PlannedScreen(
