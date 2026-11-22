@@ -377,6 +377,46 @@ if let data = try? JSONEncoder().encode(prog), let back = try? JSONDecoder().dec
     check(back == prog, "programma effetti: salvataggio JSON")
 } else { check(false, "programma effetti: salvataggio JSON") }
 
+// MARK: Catalogo effetti completo
+check(EffectKind.allCases.count >= 45, "effetti: catalogo completo", "\(EffectKind.allCases.count)")
+var allEffectsOK = true
+var failingEffect = ""
+for kind in EffectKind.allCases {
+    var prm = EffectParams()
+    prm.kind = kind
+    prm.colors = kind.defaultColors
+    prm.intensity = 1
+    let pr = EffectProgram(name: kind.label, layers: [EffectLayer(params: prm)])
+    for tt in [0.0, 0.37, 1.3, 7.7, 123.4] {
+        let a = EffectEngine.render(pr, context: ctx, time: tt)
+        let b = EffectEngine.render(pr, context: ctx, time: tt)
+        if a.count != 40 || a != b { allEffectsOK = false; failingEffect = kind.rawValue }
+    }
+    if kind.label.isEmpty || kind.icon.isEmpty || kind.defaultColors.isEmpty { allEffectsOK = false; failingEffect = kind.rawValue }
+}
+check(allEffectsOK, "effetti: ognuno produce un colore per pixel ed è deterministico", failingEffect)
+for kind in EffectKind.allCases where kind != .solid && kind != .gradient && kind != .lightning {
+    var prm = EffectParams(); prm.kind = kind; prm.colors = kind.defaultColors; prm.intensity = 1; prm.speed = 0.7
+    let pr = EffectProgram(name: "", layers: [EffectLayer(params: prm)])
+    var frames = Set<[RGB]>()
+    for k in 0..<12 {
+        let m = EffectEngine.render(pr, context: ctx, time: Double(k) * 0.43)
+        frames.insert((0..<40).map { m[LEDKey(controller: ctrl, pixel: $0)] ?? .black })
+    }
+    if frames.count < 2 && kind != .powerOn && kind != .powerDown { allEffectsOK = false; failingEffect = "statico: \(kind.rawValue)" }
+}
+check(allEffectsOK, "effetti animati: cambiano nel tempo", failingEffect)
+var bounceP = EffectParams(); bounceP.kind = .bounce; bounceP.colors = [.red, .black]; bounceP.intensity = 1; bounceP.speed = 0.5; bounceP.width = 0.15
+let bp = EffectProgram(name: "", layers: [EffectLayer(params: bounceP)])
+let b1 = brightestPixel(EffectEngine.render(bp, context: ctx, time: 1.0)), b2 = brightestPixel(EffectEngine.render(bp, context: ctx, time: 2.0))
+check(b1 > 30 && b2 < 10, "supercar: va e torna", "\(b1) \(b2)")
+var polP = EffectParams(); polP.kind = .police; polP.colors = [.red, .blue]; polP.intensity = 1; polP.axis = .frontBack; polP.speed = 1
+let pol = EffectEngine.render(EffectProgram(name: "", layers: [EffectLayer(params: polP)]), context: ctx, time: 0.02)
+check(pol.values.contains(.red) || pol.values.contains(.blue), "polizia: lampeggi rosso/blu")
+check(abs(EffectEngine.valueNoise(1.2, 3.4, 5.6) - EffectEngine.valueNoise(1.2, 3.4, 5.6)) < 1e-12
+      && (0...1).contains(EffectEngine.valueNoise(0.3, 9.1, -2.2)), "rumore deterministico in 0…1")
+check(EffectEngine.paletteLinear([.red, .blue], 0) == .red && EffectEngine.paletteLinear([.red, .blue], 1) == .blue, "tavolozza lineare")
+
 // MARK: Forma dell'auto (modello provvisorio)
 check(abs(CarShape.topY(-0.5) - 1.415) < 0.02, "forma: tetto a 1,41 m")
 check(abs(CarShape.topY(2.015) - 0.62) < 0.01 && CarShape.topY(1.5) < 0.95, "forma: muso e cofano bassi")

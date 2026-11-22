@@ -4,33 +4,190 @@ import simd
 /// Motore effetti indipendente dall'hardware: calcola il colore di ogni pixel logico nel tempo
 /// dalle coordinate spaziali dei LED (sistema dell'auto). Lo stesso risultato alimenta
 /// l'anteprima 3D e l'invio alle centraline.
-enum EffectKind: String, Codable, CaseIterable, Identifiable {
-    case solid, rainbow, waves, scanFrontBack, scanLeftRight, meteor, pulse, twinkle, powerOn
+enum EffectCategory: String, CaseIterable, Identifiable {
+    case base = "Base"
+    case motion = "Movimento"
+    case nature = "Natura"
+    case party = "Festa"
+    case car = "Auto"
     var id: String { rawValue }
+}
+
+enum EffectKind: String, Codable, CaseIterable, Identifiable {
+    // Base
+    case solid, gradient, colorCycle, breathe, pulse, heartbeat, strobe
+    // Movimento
+    case rainbow, gradientFlow, waves, scanFrontBack, scanLeftRight, bounce, dualScan, centerOut, outsideIn
+    case colorWipe, meteor, rainbowMeteor, theaterChase, stripes, spiral, beacon, ripple, powerOn, powerDown
+    // Natura
+    case fire, candle, ocean, aurora, plasma, lava, rain, lightning, starfield
+    // Festa
+    case twinkle, sparkle, glitter, confetti, fireworks, police, checker, disco
+    // Auto
+    case turnSignal, hazard, welcome, brake
+
+    var id: String { rawValue }
+
     var label: String {
         switch self {
         case .solid: return "Colore statico"
+        case .gradient: return "Sfumatura"
+        case .colorCycle: return "Ciclo colori"
+        case .breathe: return "Respiro"
+        case .pulse: return "Pulsazione"
+        case .heartbeat: return "Battito"
+        case .strobe: return "Stroboscopio"
         case .rainbow: return "Arcobaleno"
+        case .gradientFlow: return "Sfumatura in movimento"
         case .waves: return "Onde"
         case .scanFrontBack: return "Scansione avanti → dietro"
         case .scanLeftRight: return "Scansione sinistra → destra"
+        case .bounce: return "Supercar (avanti e indietro)"
+        case .dualScan: return "Doppia scansione"
+        case .centerOut: return "Dal centro verso l'esterno"
+        case .outsideIn: return "Dall'esterno verso il centro"
+        case .colorWipe: return "Passata di colori"
         case .meteor: return "Meteora"
-        case .pulse: return "Pulsazione"
-        case .twinkle: return "Scintillio"
+        case .rainbowMeteor: return "Meteora arcobaleno"
+        case .theaterChase: return "Inseguimento"
+        case .stripes: return "Strisce"
+        case .spiral: return "Spirale"
+        case .beacon: return "Faro rotante"
+        case .ripple: return "Cerchi nell'acqua"
         case .powerOn: return "Accensione progressiva"
+        case .powerDown: return "Spegnimento progressivo"
+        case .fire: return "Fuoco"
+        case .candle: return "Candela"
+        case .ocean: return "Oceano"
+        case .aurora: return "Aurora boreale"
+        case .plasma: return "Plasma"
+        case .lava: return "Lava"
+        case .rain: return "Pioggia"
+        case .lightning: return "Fulmini"
+        case .starfield: return "Cielo stellato"
+        case .twinkle: return "Scintillio"
+        case .sparkle: return "Brillantini"
+        case .glitter: return "Glitter colorato"
+        case .confetti: return "Coriandoli"
+        case .fireworks: return "Fuochi d'artificio"
+        case .police: return "Polizia"
+        case .checker: return "Scacchiera"
+        case .disco: return "Discoteca"
+        case .turnSignal: return "Freccia sequenziale"
+        case .hazard: return "Quattro frecce"
+        case .welcome: return "Benvenuto"
+        case .brake: return "Luci freno"
         }
     }
+
     var icon: String {
         switch self {
         case .solid: return "circle.fill"
+        case .gradient: return "circle.lefthalf.filled"
+        case .colorCycle: return "arrow.triangle.2.circlepath"
+        case .breathe: return "wind"
+        case .pulse: return "dot.radiowaves.left.and.right"
+        case .heartbeat: return "heart.fill"
+        case .strobe: return "bolt.fill"
         case .rainbow: return "rainbow"
+        case .gradientFlow: return "water.waves.and.arrow.down"
         case .waves: return "water.waves"
         case .scanFrontBack: return "arrow.left.and.right"
         case .scanLeftRight: return "arrow.up.and.down"
+        case .bounce: return "arrow.left.arrow.right"
+        case .dualScan: return "arrow.left.and.line.vertical.and.arrow.right"
+        case .centerOut: return "arrow.up.left.and.arrow.down.right"
+        case .outsideIn: return "arrow.down.right.and.arrow.up.left"
+        case .colorWipe: return "paintbrush"
         case .meteor: return "sparkle"
-        case .pulse: return "heart.fill"
-        case .twinkle: return "sparkles"
+        case .rainbowMeteor: return "moon.stars.fill"
+        case .theaterChase: return "ellipsis"
+        case .stripes: return "line.3.horizontal"
+        case .spiral: return "hurricane"
+        case .beacon: return "light.beacon.max.fill"
+        case .ripple: return "circle.circle"
         case .powerOn: return "power"
+        case .powerDown: return "power.dotted"
+        case .fire: return "flame.fill"
+        case .candle: return "flame"
+        case .ocean: return "drop.fill"
+        case .aurora: return "sparkles.rectangle.stack"
+        case .plasma: return "atom"
+        case .lava: return "drop.triangle.fill"
+        case .rain: return "cloud.rain.fill"
+        case .lightning: return "cloud.bolt.fill"
+        case .starfield: return "star.fill"
+        case .twinkle: return "sparkles"
+        case .sparkle: return "wand.and.stars"
+        case .glitter: return "staroflife.fill"
+        case .confetti: return "party.popper.fill"
+        case .fireworks: return "fireworks"
+        case .police: return "light.beacon.min.fill"
+        case .checker: return "checkerboard.rectangle"
+        case .disco: return "music.note"
+        case .turnSignal: return "arrowshape.right.fill"
+        case .hazard: return "exclamationmark.triangle.fill"
+        case .welcome: return "hand.wave.fill"
+        case .brake: return "car.rear.fill"
+        }
+    }
+
+    var category: EffectCategory {
+        switch self {
+        case .solid, .gradient, .colorCycle, .breathe, .pulse, .heartbeat, .strobe: return .base
+        case .rainbow, .gradientFlow, .waves, .scanFrontBack, .scanLeftRight, .bounce, .dualScan, .centerOut, .outsideIn,
+             .colorWipe, .meteor, .rainbowMeteor, .theaterChase, .stripes, .spiral, .beacon, .ripple, .powerOn, .powerDown:
+            return .motion
+        case .fire, .candle, .ocean, .aurora, .plasma, .lava, .rain, .lightning, .starfield: return .nature
+        case .twinkle, .sparkle, .glitter, .confetti, .fireworks, .police, .checker, .disco: return .party
+        case .turnSignal, .hazard, .welcome, .brake: return .car
+        }
+    }
+
+    /// Colori proposti quando si sceglie l'effetto.
+    var defaultColors: [RGB] {
+        let cyan = RGB(r: 0, g: 220, b: 245), black = RGB.black, white = RGB(r: 255, g: 255, b: 255)
+        let amber = RGB(r: 255, g: 120, b: 0), red = RGB.red, blue = RGB.blue
+        switch self {
+        case .solid, .pulse, .waves, .scanFrontBack, .scanLeftRight, .dualScan, .meteor, .powerOn, .powerDown, .beacon, .ripple:
+            return [cyan, black]
+        case .gradient, .gradientFlow, .colorCycle, .colorWipe, .stripes, .spiral, .breathe, .confetti:
+            return [RGB(r: 255, g: 0, b: 120), RGB(r: 120, g: 0, b: 255), cyan, RGB(r: 0, g: 255, b: 120)]
+        case .heartbeat, .brake: return [red, black]
+        case .strobe, .sparkle: return [white, RGB(r: 10, g: 10, b: 30)]
+        case .bounce: return [red, black]
+        case .centerOut, .outsideIn: return [cyan, RGB(r: 255, g: 0, b: 160), amber]
+        case .theaterChase: return [amber, RGB(r: 20, g: 8, b: 0)]
+        case .fire, .lava: return [RGB(r: 255, g: 40, b: 0), RGB(r: 255, g: 160, b: 0)]
+        case .candle: return [RGB(r: 255, g: 140, b: 40), black]
+        case .ocean: return [RGB(r: 0, g: 30, b: 140), RGB(r: 0, g: 190, b: 230), white]
+        case .aurora: return [RGB(r: 0, g: 255, b: 120), RGB(r: 0, g: 160, b: 200), RGB(r: 160, g: 0, b: 255)]
+        case .rain: return [RGB(r: 120, g: 170, b: 255), black]
+        case .lightning: return [white, RGB(r: 10, g: 0, b: 40)]
+        case .starfield: return [white, RGB(r: 0, g: 0, b: 25)]
+        case .twinkle: return [white, RGB(r: 0, g: 40, b: 60)]
+        case .police: return [red, blue]
+        case .checker: return [white, RGB(r: 255, g: 0, b: 120)]
+        case .turnSignal, .hazard: return [amber, black]
+        case .welcome: return [cyan, white]
+        case .rainbow, .rainbowMeteor, .plasma, .glitter, .fireworks, .disco: return [white, black]
+        }
+    }
+
+    /// Effetti che usano tutti i colori della tavolozza (fino a 5).
+    var usesPalette: Bool {
+        switch self {
+        case .gradient, .gradientFlow, .colorCycle, .colorWipe, .stripes, .spiral, .breathe, .confetti,
+             .centerOut, .outsideIn, .ocean, .aurora: return true
+        default: return false
+        }
+    }
+
+    /// Effetti in cui i colori sono generati (arcobaleno, plasma…).
+    var generatesColors: Bool {
+        switch self {
+        case .rainbow, .rainbowMeteor, .plasma, .glitter, .fireworks, .disco: return true
+        default: return false
         }
     }
 }
@@ -93,6 +250,11 @@ struct EffectContext {
     let u: [EffectAxis: [Double]]
     let zones: [CarZone]
     let hash: [Double]
+    /// Coordinate normalizzate −1…1 rispetto all'ingombro dei LED (x avanti, y alto, z sinistra).
+    let norm: [SIMD3<Double>]
+    /// Distanza dal centro in pianta (0…1) e angolo attorno all'auto (0…1).
+    let radius: [Double]
+    let angle: [Double]
 
     init(points: [EffectPoint]) {
         self.points = points
@@ -106,6 +268,15 @@ struct EffectContext {
         self.u = u
         zones = points.map { ZoneClassifier.zone(of: $0.position) }
         hash = points.map { EffectContext.hash($0.key) }
+        var lo = SIMD3<Double>(repeating: .infinity), hi = SIMD3<Double>(repeating: -.infinity)
+        for p in points { lo = simd_min(lo, p.position); hi = simd_max(hi, p.position) }
+        if points.isEmpty { lo = .zero; hi = .zero }
+        let center = (lo + hi) / 2
+        let half = simd_max((hi - lo) / 2, SIMD3<Double>(repeating: 1e-6))
+        let n = points.map { ($0.position - center) / half }
+        norm = n
+        radius = n.map { min(1, (($0.x * $0.x + $0.z * $0.z) / 2).squareRoot()) }
+        angle = n.map { EffectEngine.frac(atan2($0.z, $0.x) / (2 * .pi) + 1) }
     }
 
     static func component(_ p: SIMD3<Double>, _ axis: EffectAxis) -> Double {
@@ -194,6 +365,8 @@ enum EffectEngine {
             level = min(1, max(0, (progress * (1 + w) - u) / w))
             background = .black
             base = p.primary
+        default:
+            return scale(extended(p, context: context, index: i, time: t, u: u, speed: speed, width: w), p.intensity)
         }
         return scale(mix(background, base, level), p.intensity)
     }

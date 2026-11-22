@@ -192,14 +192,42 @@ struct LayerCard: View {
                 Spacer()
                 Button(role: .destructive, action: onDelete) { Image(systemName: "trash") }
             }
-            Picker("Effetto", selection: $layer.params.kind) {
-                ForEach(EffectKind.allCases) { Label($0.label, systemImage: $0.icon).tag($0) }
-            }.pickerStyle(.menu)
-            HStack {
-                ColorPicker("Colore 1", selection: colorBinding(0), supportsOpacity: false)
-                ColorPicker("Colore 2", selection: colorBinding(1), supportsOpacity: false)
+            Menu {
+                ForEach(EffectCategory.allCases) { cat in
+                    Section(cat.rawValue) {
+                        ForEach(EffectKind.allCases.filter { $0.category == cat }) { k in
+                            Button { choose(k) } label: { Label(k.label, systemImage: k.icon) }
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Image(systemName: layer.params.kind.icon)
+                    Text(layer.params.kind.label)
+                    Spacer()
+                    Text(layer.params.kind.category.rawValue).font(.caption).foregroundStyle(Theme.textSecondary)
+                    Image(systemName: "chevron.up.chevron.down").font(.caption)
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Theme.surfaceHigh))
             }
-            .font(.subheadline)
+            if layer.params.kind.generatesColors {
+                Text("Colori generati dall'effetto.").font(.caption).foregroundStyle(Theme.textSecondary)
+            } else {
+                let maxColors = layer.params.kind.usesPalette ? 5 : 2
+                HStack(spacing: 10) {
+                    ForEach(0..<min(max(layer.params.colors.count, 1), maxColors), id: \.self) { i in
+                        ColorPicker("", selection: colorBinding(i), supportsOpacity: false).labelsHidden()
+                    }
+                    Spacer()
+                    if layer.params.kind.usesPalette {
+                        Stepper("", value: Binding(get: { layer.params.colors.count },
+                                                   set: { n in setColorCount(n) }), in: 1...5).labelsHidden()
+                    }
+                }
+                Text(layer.params.kind.usesPalette ? "Tavolozza: \(layer.params.colors.count) colori" : "Colore principale e di sfondo")
+                    .font(.caption2).foregroundStyle(Theme.textSecondary)
+            }
             slider("Velocità", $layer.params.speed, 0.02...3, format: "%.2f cicli/s")
             slider("Intensità", $layer.params.intensity, 0...1, format: "%.0f%%", scale: 100)
             slider("Larghezza", $layer.params.width, 0.05...1, format: "%.2f")
@@ -220,6 +248,20 @@ struct LayerCard: View {
             }
         }
         .opacity(layer.enabled ? 1 : 0.55)
+    }
+
+    private func choose(_ k: EffectKind) {
+        layer.params.kind = k
+        layer.params.colors = k.defaultColors
+        if k.category == .car { layer.params.axis = .frontBack }
+    }
+
+    private func setColorCount(_ n: Int) {
+        let target = min(max(n, 1), 5)
+        while layer.params.colors.count < target {
+            layer.params.colors.append(EffectEngine.hsv(Double(layer.params.colors.count) * 0.21, 1, 1))
+        }
+        if layer.params.colors.count > target { layer.params.colors.removeLast(layer.params.colors.count - target) }
     }
 
     private func colorBinding(_ i: Int) -> Binding<Color> {
