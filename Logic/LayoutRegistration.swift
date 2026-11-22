@@ -64,15 +64,22 @@ enum LayoutRegistration {
         return CarAlignment(yaw: -phi, offset: ca - rInv, scale: scale)
     }
 
-    /// Stima robusta: ripete la stima tenendo i pixel con scarto ≤ max(3 × mediana, 8 cm).
+    /// Stima robusta: prima tiene il 60 % dei pixel più coerenti (così fino al 40 % montato
+    /// diversamente non sposta il risultato), poi i pixel con scarto ≤ max(3 × mediana, 8 cm).
     static func fit(scan: [EffectPoint], design: [EffectPoint]) -> Fit? {
         let all = pairs(scan: scan, design: design)
         guard var a = solve(all) else { return nil }
         var used = all
-        for _ in 0..<5 {
+        var limit = Double.infinity
+        for it in 0..<8 {
             let res = all.map { simd_distance(a.toCar($0.scan), $0.design) }
-            let med = res.sorted()[res.count / 2]
-            let limit = max(3 * med, 0.08)
+            let sorted = res.sorted()
+            if it < 3 {
+                limit = sorted[min(sorted.count - 1, Int(Double(sorted.count) * 0.6))]
+            } else {
+                let kept = sorted.filter { $0 <= limit }
+                limit = max(3 * (kept.isEmpty ? sorted[sorted.count / 2] : kept[kept.count / 2]), 0.08)
+            }
             let keep = zip(all, res).filter { $0.1 <= limit }.map { $0.0 }
             guard keep.count >= 3, let next = solve(keep) else { break }
             a = next
