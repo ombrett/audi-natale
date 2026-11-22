@@ -130,30 +130,38 @@ enum IdealProtocol {
     static func diyExit(keepDrawing: Bool) -> [UInt8] { tagged("DSTOP", [keepDrawing ? 1 : 0], length: 5) }
 
     /// `0d 'DOOD' 01 <idx BE> 02 64 R G B <luminosità>` — un pixel, modalità statica, velocità 100.
-    static func diyPixel(index: Int, color: RGB, brightness: Int) throws -> [UInt8] {
+    static func diyPixel(index: Int, color: RGB, brightness: Int, mode: UInt8 = 2, speed: Int = 100) throws -> [UInt8] {
         guard index >= 0, index < maxSafeLEDs else {
             throw ProtocolError.ledIndexOutOfRange(index, max: maxSafeLEDs - 1)
         }
         guard (0...100).contains(brightness) else {
             throw ProtocolError.valueOutOfRange(field: "Luminosità DIY", value: brightness, range: 0...100)
         }
-        return dood(target: 1, index: UInt16(index), color: color, brightness: UInt8(brightness))
+        try checkDIY(mode: mode, speed: speed)
+        return dood(target: 1, index: UInt16(index), color: color, brightness: UInt8(brightness), mode: mode, speed: UInt8(speed))
     }
 
     /// `0d 'DOOD' 00 <conteggio BE> …` — riempie tutti i LED (conteggio = numero LED).
-    static func diyFill(ledCount: Int, color: RGB, brightness: Int) throws -> [UInt8] {
+    static func diyFill(ledCount: Int, color: RGB, brightness: Int, mode: UInt8 = 2, speed: Int = 100) throws -> [UInt8] {
         guard ledCount >= 1, ledCount <= maxSafeLEDs else {
             throw ProtocolError.ledIndexOutOfRange(ledCount, max: maxSafeLEDs)
         }
         guard (0...100).contains(brightness) else {
             throw ProtocolError.valueOutOfRange(field: "Luminosità DIY", value: brightness, range: 0...100)
         }
-        return dood(target: 0, index: UInt16(ledCount), color: color, brightness: UInt8(brightness))
+        try checkDIY(mode: mode, speed: speed)
+        return dood(target: 0, index: UInt16(ledCount), color: color, brightness: UInt8(brightness), mode: mode, speed: UInt8(speed))
     }
 
-    private static func dood(target: UInt8, index: UInt16, color: RGB, brightness: UInt8) -> [UInt8] {
+    /// Modalità 0 lampeggio, 1 respiro, 2 fisso; velocità 1…100 (0 non disegna, oltre 100 scrive fuori array).
+    private static func checkDIY(mode: UInt8, speed: Int) throws {
+        guard mode <= 2 else { throw ProtocolError.valueOutOfRange(field: "Modalità DIY", value: Int(mode), range: 0...2) }
+        guard (1...100).contains(speed) else { throw ProtocolError.valueOutOfRange(field: "Velocità DIY", value: speed, range: 1...100) }
+    }
+
+    private static func dood(target: UInt8, index: UInt16, color: RGB, brightness: UInt8, mode: UInt8, speed: UInt8) -> [UInt8] {
         let hi = UInt8(index >> 8), lo = UInt8(index & 0xFF)
-        return tagged("DOOD", [target, hi, lo, 0x02, 0x64, color.r, color.g, color.b, brightness], length: 0x0D)
+        return tagged("DOOD", [target, hi, lo, mode, speed, color.r, color.g, color.b, brightness], length: 0x0D)
     }
 
     static func encrypted(_ plain: [UInt8]) -> [UInt8]? { IdealCrypto.encrypt(plain) }

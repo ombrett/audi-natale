@@ -50,6 +50,11 @@ final class IdealController: ObservableObject {
     private var batchRetried = false
     private var opTimeout: DispatchWorkItem?
     private var queuedTarget: [RGB]?
+    /// Animazione DIY applicata alla tela (modalità e velocità uguali per tutti i pixel del disegno).
+    private(set) var diyMode: DIYMode = .static
+    private(set) var diySpeed = 100
+    private var canvasAnimation: (DIYMode, Int) = (.static, 100)
+    private var waiters: [(tag: String, deadline: DispatchWorkItem, completion: (Bool) -> Void)] = []
 
     let ble: BLEManager
     let settings: AppSettings
@@ -210,7 +215,9 @@ final class IdealController: ObservableObject {
 
     /// Porta la tela del controller al disegno `target` (un colore per indice), usando solo DOOD
     /// verificati. Se un invio è in corso, il nuovo disegno viene accodato e applicato dopo.
-    func apply(target: [RGB]) {
+    func apply(target: [RGB], mode: DIYMode = .static, speed: Int = 100) {
+        diyMode = mode
+        diySpeed = min(max(speed, 1), 100)
         guard canDraw else { lastResult = "Verifica di compatibilità incompleta."; return }
         guard !target.isEmpty, target.count <= min(settings.ledCount, IdealProtocol.maxSafeLEDs) else {
             lastResult = "Disegno di \(target.count) LED oltre il limite configurato (\(settings.ledCount))."
@@ -242,6 +249,9 @@ final class IdealController: ObservableObject {
     }
 
     private func start(_ target: [RGB]) {
+        // Se cambia l'animazione, ogni pixel va ridisegnato con la nuova modalità.
+        if canvasAnimation != (diyMode, diySpeed) { canvas = nil }
+        canvasAnimation = (diyMode, diySpeed)
         let current = (canvas?.count == target.count) ? canvas : nil
         let ops = PixelPlanner.plan(current: current, target: target)
         log.add(.event, nil, "Disegno: \(ops.count) comandi DOOD per \(target.count) LED")
@@ -258,8 +268,8 @@ final class IdealController: ObservableObject {
     private func packet(for op: PixelOp) throws -> [UInt8] {
         let b = min(max(settings.diyBrightness, 0), 100)
         switch op {
-        case .fill(let c): return try IdealProtocol.diyFill(ledCount: canvas?.count ?? settings.ledCount, color: c, brightness: b)
-        case .pixel(let i, let c): return try IdealProtocol.diyPixel(index: i, color: c, brightness: b)
+        case .fill(let c): return try IdealProtocol.diyFill(ledCount: canvas?.count ?? settings.ledCount, color: c, brightness: b, mode: diyMode.rawValue, speed: diySpeed)
+        case .pixel(let i, let c): return try IdealProtocol.diyPixel(index: i, color: c, brightness: b, mode: diyMode.rawValue, speed: diySpeed)
         }
     }
 
@@ -344,10 +354,81 @@ final class IdealController: ObservableObject {
             // Con ritentativi una conferma tardiva può essere stata contata nel gruppo sbagliato:
             // al prossimo invio si ridisegna tutto da zero.
             if t.retries > 0 { canvas = nil }
+            if diyMode != .static && t.done > 0 { settings.addConfirmedTag("DOOD#\(diyMode.rawValue)", for: deviceName) }
         }
         if let next = queuedTarget {
             queuedTarget = nil
             start(next)
+        }
+    }
+
+    // MARK: Effetti della centralina (Milestone 4)
+
+    /// Attende la risposta `<tag>OK`; false allo scadere del tempo.
+    private func waitFor(_ tag: String, timeout: TimeInterval = 2, completion: @escaping (Bool) -> Void) {
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, let i = self.waiters.firstIndex(where: { $0.tag == tag }) else { return }
+            let w = self.waiters.remove(at: i)
+            w.completion(false)
+        }
+        waiters.append((tag: tag, deadline: work, completion: completion))
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout, execute: work)
+    }
+
+    /// Esce dal DIY (ripristinando la modalità precedente) prima di un effetto, poi esegue `then`.
+    private func leaveDIYIfNeeded(then: @escaping () -> Void) {
+        guard diyActive else { then(); return }
+        cancelTransfer()
+        exitDIY(keepDrawing: false)
+        canvas = nil
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: then)
+    }
+
+    /// Effetto a due colori (SGLS). L'esito arriva in `completion` (true = SGLSOK).
+    func playEffect(mode: Int, reversed: Bool, speed: Int, foreground: RGB, background: RGB, brightness: Int,
+                    completion: @escaping (String) -> Void) {
+        guard transportReady && protocolConfirmed && ble.isSettled else { completion("Controller non pronto."); return }
+        let packet: [UInt8]
+        do {
+            packet = try IdealProtocol.effect(mode: mode, reversed: reversed, speed: speed,
+                                              foreground: foreground, background: background, brightness: brightness)
+        } catch { completion("\(error)"); return }
+        leaveDIYIfNeeded { [weak self] in
+            guard let self else { return }
+            let name = IdealEffects.sglsNames[mode]
+            if let err = self.send(packet, label: "SGLS \(mode) \(name)", expect: nil) { completion(err); return }
+            self.waitFor("SGLS") { ok in
+                if ok { self.settings.addConfirmedTag("SGLS#\(mode)", for: self.deviceName) }
+                completion(ok ? "Effetto \"\(name)\" confermato (SGLSOK)" : "Nessuna risposta SGLSOK")
+            }
+        }
+    }
+
+    /// Scena multicolore (MULT): intestazione cifrata, attesa MULTOK, frame colori in chiaro su …960A,
+    /// attesa MULTCPOK. Se manca MULTOK il frame non viene inviato.
+    func playScene(effect: Int, reversed: Bool, speed: Int, colors: [RGB], brightness: Int,
+                   completion: @escaping (String) -> Void) {
+        guard transportReady && protocolConfirmed && ble.isSettled else { completion("Controller non pronto."); return }
+        let scene: (header: [UInt8], frame: [UInt8])
+        do {
+            scene = try IdealProtocol.scene(effect: effect, reversed: reversed, speed: speed, colors: colors, brightness: brightness)
+        } catch { completion("\(error)"); return }
+        leaveDIYIfNeeded { [weak self] in
+            guard let self else { return }
+            let name = IdealEffects.multNames[effect]
+            if let err = self.send(scene.header, label: "MULT \(effect) \(name), \(colors.count) colori", expect: nil) { completion(err); return }
+            self.waitFor("MULT") { ok in
+                guard ok else { completion("Nessuna risposta MULTOK: frame colori non inviato"); return }
+                let verdict = CommandSafety.evaluate(bytes: scene.frame, role: .bulk, encoding: .plaintextEncryptInApp, ledCount: self.settings.ledCount)
+                guard verdict.level != .blocked else { completion("Frame bloccato: \(verdict.reasons.joined(separator: " "))"); return }
+                if let err = self.ble.write(scene.frame, to: IdealUUID.bulk, type: .withoutResponse, note: "MULT frame \(colors.count) colori") {
+                    completion(err); return
+                }
+                self.waitFor("MULTCP", timeout: 3) { done in
+                    if done { self.settings.addConfirmedTag("MULT#\(effect)", for: self.deviceName) }
+                    completion(done ? "Scena \"\(name)\" confermata (MULTCPOK)" : "MULTOK ricevuto ma nessun MULTCPOK dopo i colori")
+                }
+            }
         }
     }
 
@@ -374,6 +455,11 @@ final class IdealController: ObservableObject {
     }
 
     private func confirm(_ tag: String) {
+        if let i = waiters.firstIndex(where: { $0.tag == tag }) {
+            let w = waiters.remove(at: i)
+            w.deadline.cancel()
+            w.completion(true)
+        }
         if tag == "DOOD", !batch.isEmpty {
             opAcked()
         }

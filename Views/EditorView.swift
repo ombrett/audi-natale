@@ -29,6 +29,9 @@ struct EditorView: View {
     @State private var presetName = ""
     @State private var showPresets = false
     @State private var lastPainted: Int?
+    @State private var animation: DIYMode = .static
+    @State private var animSpeed = 60.0
+    @State private var askAnimation = false
 
     private let columns = 20
 
@@ -69,6 +72,12 @@ struct EditorView: View {
             Button("Annulla", role: .cancel) {}
         }
         .sheet(isPresented: $showPresets) { presetSheet }
+        .alert("Animazione \(animation.label)", isPresented: $askAnimation) {
+            Button("Invia") { ideal.apply(target: pixels, mode: animation, speed: Int(animSpeed)) }
+            Button("Annulla", role: .cancel) {}
+        } message: {
+            Text("La modalità \(animation.label.lowercased()) dei pixel DIY è ricavata dal firmware TR2309 e non è mai stata catturata. Velocità nei limiti sicuri (1–100). Inviare?")
+        }
     }
 
     // MARK: Tela
@@ -135,6 +144,18 @@ struct EditorView: View {
             .buttonStyle(AccentButtonStyle(filled: false))
             Stepper("Luminosità DIY: \(settings.diyBrightness)%", value: $settings.diyBrightness, in: 1...100, step: 5)
                 .font(.subheadline)
+            Picker("Animazione", selection: $animation) {
+                ForEach([DIYMode.static, .breathe, .flash]) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            if animation != .static {
+                VStack(alignment: .leading) {
+                    Text("Velocità animazione: \(Int(animSpeed))").font(.subheadline)
+                    Slider(value: $animSpeed, in: 1...100, step: 1)
+                }
+                Text("Il controller anima da solo ogni LED acceso; stessa velocità = LED sincronizzati.")
+                    .font(.caption2).foregroundStyle(Theme.textSecondary)
+            }
         }
     }
 
@@ -271,7 +292,11 @@ struct EditorView: View {
 
     private func sendDrawing() {
         guard ideal.canDraw else { return }
-        ideal.apply(target: pixels)
+        if animation != .static && !ideal.confirmedTags.contains("DOOD#\(animation.rawValue)") && !askAnimation {
+            askAnimation = true
+            return
+        }
+        ideal.apply(target: pixels, mode: animation, speed: Int(animSpeed))
     }
 }
 

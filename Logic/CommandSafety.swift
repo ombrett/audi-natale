@@ -109,6 +109,7 @@ enum CommandSafety {
             if arg(0) > 1 { return blocked(plain, tag, "DSTOP accetta solo 00 o 01.") }
         case "SGLS":
             if arg(0) > 9 { return blocked(plain, tag, "SGLS: modalità \(arg(0)) > 9 scrive fuori array nel firmware.") }
+            if arg(0) > 1 { level = max(level, .experimental); reasons.append("SGLS modalità \(arg(0)): ricavata dal firmware, mai catturata.") }
         case "MULT":
             if arg(0) > 11 { return blocked(plain, tag, "MULT: effetto \(arg(0)) > 11 scrive fuori array.") }
             if !(1...7).contains(arg(4)) { return blocked(plain, tag, "MULT: numero colori \(arg(4)) fuori da 1…7.") }
