@@ -705,6 +705,68 @@ let hole = adaptiveEngine.frame(AdaptiveEffects.preset("aurora")!, elapsed: 1.3)
 check(hole[0][3] == .black && hole[0].count == 5 && hole[0][4] != .black, "adattivi: indirizzo senza punti spento, i successivi mantengono l'indice")
 check(AdaptiveEffects.pmod(-0.25, 1) == 0.75 && AdaptiveEffects.add(SIMD3(0.5, 1.5, 300)) == SIMD3(0, 2, 255), "adattivi: resto e arrotondamento come Python")
 
+// MARK: Correzione manuale delle zone (2.7)
+let zA = ControllerConfig(name: "A", bleName: "a", ledCount: 200, order: 0)
+let zB = ControllerConfig(name: "B", bleName: "b", ledCount: 200, order: 1)
+let b57 = LEDKey(controller: zB.id, pixel: 57)
+var zMap = CarMap(name: "Prova zone", leds: [
+    PhysicalLED(key: b57, world: SIMD3(1.40, 0.95, -0.30), confidence: 1, views: 2, part: "cofano"),
+    PhysicalLED(key: b57, world: SIMD3(-0.20, 0.80, -0.86), confidence: 1, views: 2, part: "cofano"),
+    PhysicalLED(key: LEDKey(controller: zB.id, pixel: 56), world: SIMD3(-0.15, 0.80, -0.86), confidence: 1, views: 2),
+    PhysicalLED(key: LEDKey(controller: zB.id, pixel: 58), world: SIMD3(-0.25, 0.80, -0.86), confidence: 1, views: 2),
+    PhysicalLED(key: LEDKey(controller: zA.id, pixel: 0), world: SIMD3(-1.9, 0.9, 0), confidence: 1, views: 2, part: "portellone"),
+])
+let firstID = zMap.leds[0].id, secondID = zMap.leds[1].id
+let before = zMap.leds
+check(zMap.zone(of: zMap.leds[0], design: nil) == .cofano && zMap.zone(of: zMap.leds[1], design: nil) == .cofano, "zone: B/57 parte con entrambi i punti in Cofano")
+check(zMap.setZone(.fiancata_anteriore, for: [secondID]) == 1, "zone: cambia solo il secondo punto")
+let zURL = FileManager.default.temporaryDirectory.appendingPathComponent("carmaps-test-\(UUID().uuidString).json")
+try? CarMapArchive.save([zMap], to: zURL)
+let reopened = CarMapArchive.load(zURL).first
+if let r = reopened, let p1 = r.leds.first(where: { $0.id == firstID }), let p2 = r.leds.first(where: { $0.id == secondID }) {
+    check(r.zone(of: p1, design: nil) == .cofano && r.zone(of: p2, design: nil) == .fiancata_anteriore, "zone: dopo la riapertura le due zone di B/57 restano distinte")
+    check(r.leds.map { $0.world } == before.map { $0.world } && r.leds.map { $0.key } == before.map { $0.key } && r.leds.map { $0.part } == before.map { $0.part },
+          "zone: coordinate, indirizzi e zona di progetto invariati")
+    // Blueprint con le zone corrette
+    let bp = AdaptiveEffects.preset("blueprint")!
+    let eng = r.adaptiveEngine(controllers: [zB, zA], design: nil)!
+    let samples = eng.addresses[1][57]
+    check(samples.map { $0.zone } == [.cofano, .fiancata_anteriore], "zone: Blueprint riceve Cofano e Fiancata per i due punti di B/57")
+    var allCofano = r; allCofano.resetZone(for: [secondID])
+    let engCofano = allCofano.adaptiveEngine(controllers: [zA, zB], design: nil)!
+    var everyFrameOK = true, differs = false, singleRGB = true
+    for n in 0..<96 {
+        let t = Double(n) / 24
+        let rows = eng.frame(bp, elapsed: t)
+        let u = AdaptiveEffects.Engine.phase(bp, elapsed: t)
+        let cands = samples.map { bp.effect(u, $0) }
+        let best = cands.first { max($0.x, $0.y, $0.z) == cands.map { max($0.x, $0.y, $0.z) }.max()! }!
+        let expected = RGB(r: UInt8(best.x), g: UInt8(best.y), b: UInt8(best.z))
+        if rows[1][57] != expected { everyFrameOK = false }
+        if rows[1].count != 200 || rows[0].count != 200 { singleRGB = false }
+        let keyed = FramePack.keyed(rows, controllers: [zA, zB])
+        // Anteprima: entrambi i punti fisici leggono il colore dello stesso indirizzo.
+        let shown = r.leds.filter { $0.key == b57 }.map { keyed[$0.key] }
+        if Set(shown.map { $0.map { "\($0.r),\($0.g),\($0.b)" } ?? "-" }).count != 1 || shown.count != 2 { everyFrameOK = false }
+        if engCofano.frame(bp, elapsed: t)[1][57] != rows[1][57] { differs = true }
+    }
+    check(everyFrameOK, "zone: Blueprint usa le zone corrette e i due punti di B/57 hanno lo stesso RGB in ogni fotogramma")
+    check(singleRGB, "zone: la centralina riceve un RGB per indirizzo (200 slot)")
+    check(differs, "zone: la zona corretta cambia davvero l'effetto rispetto a tutto Cofano")
+    // Ripristino della zona automatica del secondo punto
+    var restored = r
+    check(restored.resetZone(for: [secondID]) == 1, "zone: ripristino del secondo punto")
+    try? CarMapArchive.save([restored], to: zURL)
+    if let rr = CarMapArchive.load(zURL).first, let q2 = rr.leds.first(where: { $0.id == secondID }) {
+        check(q2.zoneOverride == nil && rr.zone(of: q2, design: nil) == .cofano && rr.overriddenCount == 0, "zone: ripristinata, il secondo punto torna a Cofano")
+    } else { check(false, "zone: riapertura dopo il ripristino") }
+} else { check(false, "zone: riapertura del profilo") }
+try? FileManager.default.removeItem(at: zURL)
+// Selezione lungo la striscia: con la Y segue il ramo vicino, non la copia sul cofano.
+let strip = zMap.stripPath(from: zMap.leds[2].id, to: zMap.leds[3].id)
+check(strip == [zMap.leds[2].id, secondID, zMap.leds[3].id], "zone: striscia 56→58 prende la copia di B/57 sulla fiancata")
+check(zMap.stripPath(from: zMap.leds[2].id, to: zMap.leds[4].id).isEmpty, "zone: striscia solo nella stessa centralina")
+
 print("\n\(passed) superati, \(failures) falliti")
 if let dir = CommandLine.arguments.dropFirst().first {
     try? "\(passed) superati, \(failures) falliti\n".write(toFile: dir + "/logic-summary.txt", atomically: true, encoding: .utf8)

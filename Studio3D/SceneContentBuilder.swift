@@ -5,7 +5,26 @@ enum LEDColoring: String, CaseIterable, Identifiable {
     case effect = "Effetto"
     case controller = "Centralina"
     case confidence = "Affidabilità"
+    case zone = "Zona"
     var id: String { rawValue }
+}
+
+/// Colori distintivi delle zone della carrozzeria (modifica zone e legenda).
+enum ZonePalette {
+    static func rgb(_ z: AdaptiveEffects.Zone) -> RGB {
+        switch z {
+        case .paraurti_anteriore: return RGB(r: 255, g: 120, b: 40)
+        case .cofano: return RGB(r: 255, g: 210, b: 40)
+        case .montante_anteriore: return RGB(r: 150, g: 255, b: 80)
+        case .tetto: return RGB(r: 40, g: 200, b: 255)
+        case .montante_centrale: return RGB(r: 60, g: 255, b: 190)
+        case .fiancata_anteriore: return RGB(r: 255, g: 70, b: 160)
+        case .fiancata_posteriore: return RGB(r: 170, g: 90, b: 255)
+        case .montante_posteriore: return RGB(r: 240, g: 240, b: 255)
+        case .portellone: return RGB(r: 255, g: 40, b: 40)
+        }
+    }
+    static func color(_ z: AdaptiveEffects.Zone) -> Color { Color(rgb: rgb(z)) }
 }
 
 enum LEDFilter: Hashable {
@@ -28,6 +47,7 @@ enum SceneContentBuilder {
     /// Restituisce anche gli id dei LED fisici nello stesso ordine dei punti (per la selezione).
     static func build(map: CarMap?, colors: [LEDKey: RGB], coloring: LEDColoring, filter: LEDFilter,
                       controllers: [ControllerConfig], highlight: Set<LEDKey> = [], selected: UUID? = nil,
+                      highlightIDs: Set<UUID> = [], zones: [UUID: AdaptiveEffects.Zone] = [:],
                       model: CarModelStore) -> (CarSceneContent, [UUID]) {
         var content = CarSceneContent()
         content.bodyColor = model.bodyColor
@@ -51,8 +71,10 @@ enum SceneContentBuilder {
             case .confidence:
                 let k = min(max(led.confidence, 0), 1)
                 c = EffectEngine.mix(RGB(r: 255, g: 50, b: 50), RGB(r: 60, g: 230, b: 120), k)
+            case .zone:
+                c = zones[led.id].map { ZonePalette.rgb($0) } ?? RGB(r: 90, g: 90, b: 90)
             }
-            if highlight.contains(led.key) { c = RGB(r: 255, g: 255, b: 255) }
+            if highlight.contains(led.key) || highlightIDs.contains(led.id) { c = RGB(r: 255, g: 255, b: 255) }
             content.points.append(SIMD3<Float>(Float(car.x), Float(car.y), Float(car.z)))
             content.colors.append(visible ? LEDPointCloud.color(c) : SIMD4<Float>(0.08, 0.08, 0.09, 1))
             ids.append(led.id)

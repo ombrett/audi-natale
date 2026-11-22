@@ -21,6 +21,11 @@ struct Studio3DView: View {
     @State private var importKind: ImportKind = .model
     @State private var pendingLayout: PendingLayout?
     @State private var layoutError: String?
+    @State private var zoneMode = false
+    @State private var zoneSel: Set<UUID> = []
+    @State private var zoneCache: [UUID: AdaptiveEffects.Zone] = [:]
+    @State private var zoneCacheMap: UUID?
+    @State private var zoneNote: String?
 
     enum ImportKind { case model, layout }
     struct PendingLayout: Identifiable {
@@ -32,14 +37,20 @@ struct Studio3DView: View {
     private var map: CarMap? { carMaps.active }
 
     var body: some View {
-        let built = SceneContentBuilder.build(map: map, colors: player.colors, coloring: coloring, filter: filter,
-                                              controllers: hub.controllers, selected: selectedID, model: model)
+        let built = SceneContentBuilder.build(map: map, colors: player.colors, coloring: zoneMode ? .zone : coloring, filter: filter,
+                                              controllers: hub.controllers, selected: zoneMode ? nil : selectedID,
+                                              highlightIDs: zoneMode ? zoneSel : [], zones: zoneCache, model: model)
         ScrollView {
             VStack(spacing: 14) {
                 Card {
                     ZStack(alignment: .topLeading) {
                         CarSceneView(content: built.0, camera: camera, cameraToken: camToken) { idx in
-                            selectedID = idx.flatMap { built.1.indices.contains($0) ? built.1[$0] : nil }
+                            let id = idx.flatMap { built.1.indices.contains($0) ? built.1[$0] : nil }
+                            if zoneMode {
+                                if let id { if zoneSel.contains(id) { zoneSel.remove(id) } else { zoneSel.insert(id) } }
+                            } else {
+                                selectedID = id
+                            }
                         }
                         .frame(height: 420)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
@@ -61,10 +72,11 @@ struct Studio3DView: View {
                             }
                         }
                     }
-                    Text("Trascina per ruotare a 360°, pizzica per ingrandire, tocca un LED per i dettagli.")
+                    Text(zoneMode ? "Modifica zone: tocca i punti per selezionarli o deselezionarli (bianchi = selezionati)."
+                                  : "Trascina per ruotare a 360°, pizzica per ingrandire, tocca un LED per i dettagli.")
                         .font(.caption2).foregroundStyle(Theme.textSecondary)
                 }
-                if let led = map?.leds.first(where: { $0.id == selectedID }) { selectionCard(led) }
+                if zoneMode { zoneCard } else if let led = map?.leds.first(where: { $0.id == selectedID }) { selectionCard(led) }
                 displayCard
                 mapCard
                 modelCard
@@ -121,7 +133,8 @@ struct Studio3DView: View {
         } message: { Text(layoutError ?? "") }
         .sheet(isPresented: $showAlign) { AlignmentSheet() }
         .sheet(item: $shareItem) { ActivityView(items: [$0.url]) }
-        .onAppear { player.setMap(map) }
+        .onAppear { player.setMap(map); refreshZones() }
+        .onChange(of: carMaps.activeID) { _ in zoneSel = []; refreshZones() }
     }
 
     // MARK: Card
@@ -142,6 +155,9 @@ struct Studio3DView: View {
                 if let color { Circle().fill(Color(rgb: color)).frame(width: 22, height: 22) }
             }
             info("Posizione (auto)", String(format: "x %.2f  y %.2f  z %.2f m", car.x, car.y, car.z))
+            if let z = zoneCache[led.id] {
+                info("Zona effetti", z.label + (led.zoneOverride != nil ? " · corretta a mano" : " · automatica"))
+            }
             if map?.isDesign == true {
                 info("Origine", "posizione da progetto (non misurata)")
             } else {
@@ -158,8 +174,49 @@ struct Studio3DView: View {
         }
     }
 
+    private var zoneCard: some View {
+        let selected = map?.leds.filter { zoneSel.contains($0.id) } ?? []
+        let manual = selected.filter { $0.zoneOverride != nil }.count
+        let selZones = Set(selected.compactMap { zoneCache[$0.id] })
+        return Card(title: "Modifica zone", systemImage: "square.dashed.inset.filled") {
+            Text(selected.isEmpty ? "Nessun punto selezionato" : "\(selected.count) punti selezionati" + (manual > 0 ? " · \(manual) già corretti a mano" : ""))
+                .font(.headline)
+            if selZones.count == 1, let z = selZones.first { info("Zona attuale", z.label) }
+            else if selZones.count > 1 { info("Zone attuali", "\(selZones.count) diverse") }
+            Menu {
+                ForEach(AdaptiveEffects.Zone.allCases, id: \.self) { z in
+                    Button { assignZone(z) } label: { Label(z.label, systemImage: "circle.fill") }
+                }
+            } label: {
+                Label("Assegna zona…", systemImage: "tag").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(AccentButtonStyle())
+            .disabled(selected.isEmpty)
+            HStack(spacing: 8) {
+                Button("Ripristina zona automatica") { resetZones() }
+                    .buttonStyle(AccentButtonStyle(filled: false)).enabled(manual > 0)
+                Button("Deseleziona") { zoneSel = [] }
+                    .buttonStyle(AccentButtonStyle(filled: false)).enabled(!selected.isEmpty)
+            }
+            Button("Completa la striscia tra i 2 punti") { completeStrip() }
+                .buttonStyle(AccentButtonStyle(filled: false))
+                .enabled(selected.count == 2 && selected[0].key.controller == selected[1].key.controller)
+            Text("La correzione vale per il singolo punto fisico: le due copie a Y dello stesso indirizzo possono stare in zone diverse e mostrano comunque lo stesso colore. Coordinate e indirizzi non cambiano.")
+                .font(.caption2).foregroundStyle(Theme.textSecondary)
+            if let zoneNote { Text(zoneNote).font(.caption).foregroundStyle(Theme.ok) }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), alignment: .leading)], spacing: 6) {
+                ForEach(AdaptiveEffects.Zone.allCases, id: \.self) { z in
+                    HStack(spacing: 6) { Circle().fill(ZonePalette.color(z)).frame(width: 10, height: 10); Text(z.label).font(.caption2) }
+                }
+            }
+        }
+    }
+
     private var displayCard: some View {
         Card(title: "Visualizzazione", systemImage: "eye") {
+            Toggle("Modifica zone", isOn: $zoneMode.animation())
+                .disabled(map == nil)
+                .onChange(of: zoneMode) { on in if on { selectedID = nil; refreshZones() } else { zoneSel = [] } }
             Picker("Colori", selection: $coloring) {
                 ForEach(LEDColoring.allCases) { Text($0.rawValue).tag($0) }
             }.pickerStyle(.segmented)
@@ -248,6 +305,39 @@ struct Studio3DView: View {
         let m = DemoLayout.make(controllers: hub.controllers)
         carMaps.save(m)
         player.setMap(m)
+    }
+
+    private func refreshZones() {
+        guard let m = map else { zoneCache = [:]; zoneCacheMap = nil; return }
+        let design = ProjectLayout.bundled?.points
+        zoneCache = Dictionary(uniqueKeysWithValues: m.leds.map { ($0.id, m.zone(of: $0, design: design)) })
+        zoneCacheMap = m.id
+    }
+
+    private func assignZone(_ z: AdaptiveEffects.Zone) {
+        guard var m = map else { return }
+        let n = m.setZone(z, for: zoneSel)
+        carMaps.save(m)
+        player.setMap(m)
+        refreshZones()
+        zoneNote = "\(n) punti in \(z.label). Salvato nel profilo, già usato dagli effetti adattivi."
+    }
+
+    private func resetZones() {
+        guard var m = map else { return }
+        let n = m.resetZone(for: zoneSel)
+        carMaps.save(m)
+        player.setMap(m)
+        refreshZones()
+        zoneNote = "\(n) punti tornati alla zona automatica."
+    }
+
+    private func completeStrip() {
+        guard let m = map, zoneSel.count == 2 else { return }
+        let ids = Array(zoneSel)
+        let path = m.stripPath(from: ids[0], to: ids[1])
+        zoneSel.formUnion(path)
+        zoneNote = "Selezionati \(path.count) punti lungo la striscia."
     }
 
     private func loadBundledLayout() {

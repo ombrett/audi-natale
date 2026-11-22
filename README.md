@@ -36,6 +36,12 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 
 Il firmware più vicino analizzato (TR2309) ha buffer da **400 LED** e scrive fuori memoria, in modo persistente, oltre quel limite. Un solo controller da 1600 LED non è dimostrato: probabilmente servono più centraline (es. 4 × 400). L'app non supera 400 finché non sarà dimostrato il contrario. Dettagli in [docs/PROTOCOL.md §5](docs/PROTOCOL.md).
 
+## Versione 2.7 — correzione manuale delle zone
+
+- Mappa 3D → Visualizzazione → **Modifica zone**: tocchi uno o più punti (evidenziati in bianco, con il conteggio), "Assegna zona…" con le 9 zone degli effetti adattivi, "Ripristina zona automatica", "Completa la striscia tra i 2 punti" (segue il ramo della Y più vicino).
+- La correzione è salvata sul singolo punto fisico (`PhysicalLED.zoneOverride`) nel profilo `carmaps.json`: le due copie a Y dello stesso indirizzo possono avere zone diverse, ma l'indirizzo riceve sempre un solo RGB e le due copie mostrano lo stesso colore. Coordinate, indirizzi e zona di progetto non cambiano.
+- Gli effetti adattivi usano subito la zona corretta. Test di regressione: scenario B/57 Cofano → Fiancata, riapertura del profilo, Blueprint fotogramma per fotogramma, ripristino.
+
 ## Versione 2.6 — 60 animazioni adattive
 
 - `Logic/AdaptiveEffects.swift`: porting in Swift di `Effetti_Adattivi.py` (60 preset come funzioni di tempo, posizione e zona). Le animazioni si calcolano sui punti della mappa attiva: layout di progetto oppure scansione reale allineata. Con due punti a Y vince il colore col canale più luminoso; un indirizzo senza punti resta spento.

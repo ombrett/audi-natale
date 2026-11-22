@@ -1,71 +1,6 @@
 import Foundation
 import simd
 
-/// LED fisico mappato in 3D. Più LED fisici possono avere la stessa chiave logica (cablaggio a Y).
-struct PhysicalLED: Codable, Identifiable, Equatable {
-    var id = UUID()
-    var key: LEDKey
-    /// Posizione nel mondo della scansione AR (metri).
-    var world: SIMD3<Double>
-    var confidence: Double
-    var views: Int
-    var manual = false
-    /// Parte dell'auto indicata dal layout di progetto (es. "tetto", "cofano"); nil per i LED scansionati.
-    var part: String? = nil
-    /// Ramo della Y ("left"/"right") indicato dal layout di progetto.
-    var branch: String? = nil
-}
-
-/// Mappa 3D dell'impianto: LED fisici + allineamento al modello dell'auto.
-struct CarMap: Codable, Identifiable, Equatable {
-    var id = UUID()
-    var name: String
-    var createdAt = Date()
-    var leds: [PhysicalLED]
-    var alignment = CarAlignment()
-    /// Osservazioni grezze conservate per poter aggiungere viste e ricalcolare.
-    var observations: [LEDObservation] = []
-    var viewCount = 0
-    /// Mappa dimostrativa generata dall'app (non è la tua auto): sempre indicata come tale.
-    var isDemo = false
-    /// "design" = posizioni prese dal file di progetto (Blender), non misurate sull'auto.
-    var source: String? = nil
-    /// Esito dell'ultimo allineamento automatico al progetto (da mostrare all'utente).
-    var alignmentInfo: String? = nil
-
-    var isDesign: Bool { source == "design" }
-    /// Vero solo per le mappe ottenute dalla scansione (né dimostrative né da progetto).
-    var isMeasured: Bool { !isDemo && !isDesign }
-
-    func carPosition(_ led: PhysicalLED) -> SIMD3<Double> { alignment.toCar(led.world) }
-
-    var effectPoints: [EffectPoint] { leds.map { EffectPoint(key: $0.key, position: carPosition($0)) } }
-
-    /// Gli altri LED fisici comandati dallo stesso pixel logico.
-    func twins(of led: PhysicalLED) -> [PhysicalLED] { leds.filter { $0.key == led.key && $0.id != led.id } }
-
-    func coverage(codebook: Codebook) -> (found: Int, total: Int, perController: [UUID: (Int, Int)]) {
-        let keys = Set(leds.map { $0.key })
-        var per: [UUID: (Int, Int)] = [:]
-        for e in codebook.entries {
-            let f = keys.filter { $0.controller == e.controller && $0.pixel < e.count }.count
-            per[e.controller] = (f, e.count)
-        }
-        return (per.values.reduce(0) { $0 + $1.0 }, codebook.total, per)
-    }
-
-    func missing(codebook: Codebook) -> [LEDKey] {
-        let keys = Set(leds.map { $0.key })
-        var out: [LEDKey] = []
-        for e in codebook.entries {
-            for i in 0..<e.count where !keys.contains(LEDKey(controller: e.controller, pixel: i)) {
-                out.append(LEDKey(controller: e.controller, pixel: i))
-            }
-        }
-        return out
-    }
-}
-
 final class CarMapStore: ObservableObject {
     @Published private(set) var maps: [CarMap] = []
     @Published var activeID: UUID? { didSet { UserDefaults.standard.set(activeID?.uuidString, forKey: "activeCarMap") } }
@@ -75,7 +10,7 @@ final class CarMapStore: ObservableObject {
         let dir = (try? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
             ?? FileManager.default.temporaryDirectory
         url = dir.appendingPathComponent("carmaps.json")
-        if let data = try? Data(contentsOf: url), let list = try? JSONDecoder().decode([CarMap].self, from: data) { maps = list }
+        maps = CarMapArchive.load(url)
         if let s = UserDefaults.standard.string(forKey: "activeCarMap"), let id = UUID(uuidString: s) { activeID = id }
         if activeID == nil || !maps.contains(where: { $0.id == activeID }) { activeID = maps.last?.id }
     }
@@ -106,7 +41,7 @@ final class CarMapStore: ObservableObject {
     }
 
     private func persist() {
-        if let data = try? JSONEncoder().encode(maps) { try? data.write(to: url, options: .atomic) }
+        try? CarMapArchive.save(maps, to: url)
     }
 }
 

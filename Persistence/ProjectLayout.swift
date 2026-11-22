@@ -21,35 +21,9 @@ enum ProjectLayout {
         return pts.isEmpty ? nil : pts
     }
 
-    /// Zona della carrozzeria di un punto: quella del layout se nota, altrimenti quella del punto di progetto più vicino.
-    static func zone(of position: SIMD3<Double>, part: String?) -> AdaptiveEffects.Zone {
-        if let part, let z = AdaptiveEffects.Zone(rawValue: part) { return z }
-        if let pts = bundled?.points, !pts.isEmpty {
-            var best = pts[0], bd = Double.infinity
-            for p in pts { let d = simd_distance_squared(p.position, position); if d < bd { bd = d; best = p } }
-            if let zn = best.zone, let z = AdaptiveEffects.Zone(rawValue: zn) { return z }
-        }
-        switch ZoneClassifier.zone(of: position) {
-        case .roof: return .tetto
-        case .front: return .cofano
-        case .rear: return .portellone
-        default: return position.x >= 0 ? .fiancata_anteriore : .fiancata_posteriore
-        }
-    }
-
-    /// Campioni per le animazioni adattive dalla mappa attiva: un punto per ogni LED fisico rilevato,
-    /// raggruppati per centralina (ordine della lista) e indirizzo.
+    /// Campioni per le animazioni adattive dalla mappa attiva (zone corrette a mano comprese).
     static func adaptiveEngine(map: CarMap, controllers: [ControllerConfig]) -> AdaptiveEffects.Engine? {
-        let list = controllers.sorted { $0.order < $1.order }
-        guard !list.isEmpty else { return nil }
-        let index = Dictionary(uniqueKeysWithValues: list.enumerated().map { ($1.id, $0) })
-        var pts: [Int: [Int: [AdaptiveEffects.Point]]] = [:]
-        for led in map.leds {
-            guard let ci = index[led.key.controller] else { continue }
-            let p = map.carPosition(led)
-            pts[ci, default: [:]][led.key.pixel, default: []].append(AdaptiveEffects.Point(position: p, zone: zone(of: p, part: led.part)))
-        }
-        return AdaptiveEffects.Engine(addressCounts: list.map { min($0.ledCount, IdealProtocol.maxSafeLEDs) }, points: pts)
+        map.adaptiveEngine(controllers: controllers, design: bundled?.points)
     }
 
     /// Allinea una mappa scansionata al progetto; nil se il progetto non c'è o i LED non corrispondono abbastanza.
