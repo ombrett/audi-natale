@@ -101,6 +101,13 @@ final class EffectPlayer: ObservableObject {
         return FramePack.keyed(rows, controllers: hub.controllers)
     }
 
+    func stop() {
+        isPlaying = false
+        displayTimer?.invalidate()
+        liveRunning = false
+        hub.cancelAll()
+    }
+
     private func start() {
         startTime = CACurrentMediaTime()
         itemStart = startTime
