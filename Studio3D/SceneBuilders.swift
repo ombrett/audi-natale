@@ -43,8 +43,36 @@ enum CarModelFactory {
         CarMeshBuilder.makeCar(color: color)
     }
 
+    /// Nodi del file di progetto che segnano i LED (li disegna già la nuvola di punti dell'app).
+    static func isLEDMarker(_ name: String) -> Bool { name.hasPrefix("LED_") }
+
+    /// Modello .glb: se ha già dimensioni da auto vera (3–5,5 m) resta nelle sue coordinate metriche,
+    /// così combacia con il layout LED dello stesso progetto; altrimenti viene normalizzato come gli altri.
+    static func glb(url: URL, yawSteps: Int, color: UIColor?) -> SCNNode? {
+        guard let model = try? GLTFSceneBuilder.model(at: url) else { return nil }
+        let inner = GLTFSceneBuilder.node(model)
+        let size = model.boundsMax - model.boundsMin
+        let length = max(size.x, size.z)
+        let wrapper = SCNNode()
+        wrapper.name = "car"
+        wrapper.addChildNode(inner)
+        if yawSteps % 4 == 0 && length >= 3 && length <= 5.5 {
+            if let color { tint(wrapper, color) }
+            return wrapper
+        }
+        inner.eulerAngles.y = Float(yawSteps % 4) * Float.pi / 2
+        guard length > 0 else { return wrapper }
+        let s = Float(CarDimensions.length) / length
+        inner.scale = SCNVector3(s, s, s)
+        let (a, b) = wrapper.boundingBox
+        inner.position = SCNVector3(-(a.x + b.x) / 2, -a.y, -(a.z + b.z) / 2)
+        if let color { tint(wrapper, color) }
+        return wrapper
+    }
+
     /// Carica un modello importato, lo porta a lunghezza 4,03 m, centrato e appoggiato a terra.
     static func imported(url: URL, yawSteps: Int, color: UIColor?) -> SCNNode? {
+        if url.pathExtension.lowercased() == "glb" { return glb(url: url, yawSteps: yawSteps, color: color) }
         guard let scene = try? SCNScene(url: url, options: [.checkConsistency: false]) else { return nil }
         let container = SCNNode()
         for child in scene.rootNode.childNodes { container.addChildNode(child) }
@@ -100,8 +128,8 @@ enum CameraPreset: String, CaseIterable, Identifiable {
         case .iso: return SCNVector3(5.2, 3.0, 5.0)
         case .front: return SCNVector3(7, 1.2, 0)
         case .rear: return SCNVector3(-7, 1.2, 0)
-        case .left: return SCNVector3(0, 1.2, 7)
-        case .right: return SCNVector3(0, 1.2, -7)
+        case .left: return SCNVector3(0, 1.2, -7)
+        case .right: return SCNVector3(0, 1.2, 7)
         case .top: return SCNVector3(0.01, 9, 0)
         }
     }

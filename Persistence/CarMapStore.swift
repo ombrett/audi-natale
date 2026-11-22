@@ -10,6 +10,10 @@ struct PhysicalLED: Codable, Identifiable, Equatable {
     var confidence: Double
     var views: Int
     var manual = false
+    /// Parte dell'auto indicata dal layout di progetto (es. "tetto", "cofano"); nil per i LED scansionati.
+    var part: String? = nil
+    /// Ramo della Y ("left"/"right") indicato dal layout di progetto.
+    var branch: String? = nil
 }
 
 /// Mappa 3D dell'impianto: LED fisici + allineamento al modello dell'auto.
@@ -24,6 +28,12 @@ struct CarMap: Codable, Identifiable, Equatable {
     var viewCount = 0
     /// Mappa dimostrativa generata dall'app (non è la tua auto): sempre indicata come tale.
     var isDemo = false
+    /// "design" = posizioni prese dal file di progetto (Blender), non misurate sull'auto.
+    var source: String? = nil
+
+    var isDesign: Bool { source == "design" }
+    /// Vero solo per le mappe ottenute dalla scansione (né dimostrative né da progetto).
+    var isMeasured: Bool { !isDemo && !isDesign }
 
     func carPosition(_ led: PhysicalLED) -> SIMD3<Double> { alignment.toCar(led.world) }
 
@@ -181,7 +191,7 @@ enum DemoLayout {
         return map
     }
 
-    /// Righe del zig-zag sulla metà sinistra (z > 0) della zona.
+    /// Righe del zig-zag su una metà (z > 0, lato destro) della zona; l'altra copia a Y è specchiata.
     static func rows(_ r: Region) -> [[SIMD3<Double>]] {
         func line(_ n: Int, _ f: (Double) -> SIMD3<Double>) -> [SIMD3<Double>] { (0...n).map { f(Double($0) / Double(n)) } }
         switch r {
@@ -263,21 +273,36 @@ final class CarModelStore: ObservableObject {
         else { bodyColor = RGB(r: 38, g: 42, b: 50) }
         modelFile = d.string(forKey: "modelFile")
         yawSteps = d.integer(forKey: "modelYaw")
+        useProjectModel = d.object(forKey: "useProjectModel") as? Bool ?? true
     }
 
-    var modelURL: URL? {
+    /// Modello 3D dell'A1 dal progetto Blender incluso nell'app (stesse coordinate del layout LED).
+    static var projectModelURL: URL? { Bundle.main.url(forResource: "Audi_A1_LED1600", withExtension: "glb") }
+
+    /// Usa il modello di progetto quando non c'è un modello importato (altrimenti il parametrico).
+    @Published var useProjectModel: Bool { didSet { save() } }
+
+    var importedURL: URL? {
         guard let f = modelFile else { return nil }
         let u = dir.appendingPathComponent(f)
         return FileManager.default.fileExists(atPath: u.path) ? u : nil
     }
 
+    var modelURL: URL? { importedURL ?? (useProjectModel ? Self.projectModelURL : nil) }
+
     var isProvisional: Bool { modelURL == nil }
+    var isProjectModel: Bool { importedURL == nil && modelURL != nil }
 
     /// Copia il file scelto (USDZ/SCN) nella cartella dell'app.
     func importModel(from url: URL) throws {
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
-        let name = "car-model." + (url.pathExtension.isEmpty ? "usdz" : url.pathExtension.lowercased())
+        let ext = url.pathExtension.isEmpty ? "usdz" : url.pathExtension.lowercased()
+        if ext == "glb" {
+            // Verifica subito che il file sia leggibile, così l'errore arriva all'utente.
+            _ = try GLTFModel.load(try Data(contentsOf: url), skipNode: CarModelFactory.isLEDMarker)
+        }
+        let name = "car-model." + ext
         let dest = dir.appendingPathComponent(name)
         if FileManager.default.fileExists(atPath: dest.path) { try FileManager.default.removeItem(at: dest) }
         try FileManager.default.copyItem(at: url, to: dest)
@@ -296,5 +321,6 @@ final class CarModelStore: ObservableObject {
         d.set(try? JSONEncoder().encode(bodyColor), forKey: "bodyColor")
         d.set(modelFile, forKey: "modelFile")
         d.set(yawSteps, forKey: "modelYaw")
+        d.set(useProjectModel, forKey: "useProjectModel")
     }
 }

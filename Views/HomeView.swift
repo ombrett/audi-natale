@@ -36,6 +36,7 @@ struct HomeView: View {
                 HStack(spacing: 6) {
                     if model.isProvisional { Badge(text: "MODELLO PROVVISORIO", color: Theme.warning) }
                     if carMaps.active?.isDemo == true { Badge(text: "MAPPA DIMOSTRATIVA", color: Theme.warning) }
+                    if carMaps.active?.isDesign == true { Badge(text: "MAPPA DA PROGETTO", color: Theme.warning) }
                 }
             }
             .padding(14)
@@ -93,7 +94,7 @@ struct HomeView: View {
     private var flowCard: some View {
         Card(title: "Flusso", systemImage: "arrow.triangle.turn.up.right.circle") {
             step(1, "Collega le centraline", done: hub.allReady) { section = .controllers }
-            step(2, "Scansiona l'auto", done: carMaps.active.map { !$0.isDemo } ?? false) { section = .scan }
+            step(2, "Scansiona l'auto", done: carMaps.active.map { $0.isMeasured } ?? false) { section = .scan }
             step(3, "Controlla la mappa 3D", done: false) { section = .map3D }
             step(4, "Scegli un effetto, anteprima e Live", done: player.isPlaying) { section = .effects }
         }

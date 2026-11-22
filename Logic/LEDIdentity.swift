@@ -29,6 +29,9 @@ struct ControllerConfig: Codable, Identifiable, Equatable {
     var enabled = true
     /// Colore distintivo nell'interfaccia (indice in una tavolozza).
     var tint: Int = 0
+
+    /// Prevista da un layout ma non ancora associata a un dispositivo Bluetooth.
+    var isPlaceholder: Bool { peripheralID == nil && bleName.isEmpty }
 }
 
 /// Spazio di codici condiviso da tutte le centraline: la mappatura accende i codici su tutte

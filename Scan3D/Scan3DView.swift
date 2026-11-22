@@ -181,7 +181,7 @@ struct Scan3DScreen: View {
                 }
                 .buttonStyle(AccentButtonStyle())
                 .enabled(!engine.reconstructed.isEmpty && !engine.phase.isBusy)
-                if let active = carMaps.active, !active.isDemo, engine.views.isEmpty {
+                if let active = carMaps.active, active.isMeasured, engine.views.isEmpty {
                     Button("Continua mappa") { engine.resume(from: active) }
                         .buttonStyle(AccentButtonStyle(filled: false))
                 }

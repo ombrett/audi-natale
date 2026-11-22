@@ -84,8 +84,9 @@ struct ControllerCard: View {
                     HStack {
                         Text(link.config.name).font(.headline)
                         if !link.config.enabled { Badge(text: "DISATTIVA", color: Theme.textSecondary) }
+                        if link.config.isPlaceholder { Badge(text: "DA ASSOCIARE", color: Theme.warning) }
                     }
-                    Text("\(link.config.bleName) · \(link.config.ledCount) pixel · \(link.config.copiesPerPixel == 2 ? "a Y (2 LED/pixel)" : "\(link.config.copiesPerPixel) LED/pixel")")
+                    Text("\(link.config.isPlaceholder ? "nessun dispositivo" : link.config.bleName) · \(link.config.ledCount) pixel · \(link.config.copiesPerPixel == 2 ? "a Y (2 LED/pixel)" : "\(link.config.copiesPerPixel) LED/pixel")")
                         .font(.caption).foregroundStyle(Theme.textSecondary)
                 }
                 Spacer()
@@ -136,14 +137,28 @@ struct AddControllerSheet: View {
     @EnvironmentObject var hub: ControllerHub
     @Environment(\.dismiss) private var dismiss
     @State private var ledCount = 200
+    /// Segnaposto del layout a cui associare il prossimo dispositivo (nil = nuova centralina).
+    @State private var target: UUID?
 
     var body: some View {
         NavigationStack {
             List {
-                Section {
-                    Stepper("Pixel per centralina: \(ledCount)", value: $ledCount, in: 1...IdealProtocol.maxSafeLEDs, step: 10)
-                } footer: {
-                    Text("Con due file a Y sulla stessa linea dati conta i pixel di UNA fila (es. 200).")
+                if !hub.placeholders.isEmpty {
+                    Section {
+                        Picker("Associa a", selection: $target) {
+                            Text("Nuova centralina").tag(UUID?.none)
+                            ForEach(hub.placeholders) { c in Text(c.name).tag(UUID?.some(c.id)) }
+                        }
+                    } footer: {
+                        Text("Il layout di progetto ha creato centraline da associare: scegli a quale pacco corrisponde il dispositivo che tocchi. Usa \"Identifica\" dopo per controllare.")
+                    }
+                }
+                if target == nil {
+                    Section {
+                        Stepper("Pixel per centralina: \(ledCount)", value: $ledCount, in: 1...IdealProtocol.maxSafeLEDs, step: 10)
+                    } footer: {
+                        Text("Con due file a Y sulla stessa linea dati conta i pixel di UNA fila (es. 200).")
+                    }
                 }
                 Section(hub.isScanning ? "Ricerca…" : "Centraline trovate") {
                     let configured = Set(hub.controllers.compactMap { $0.peripheralID })
@@ -151,7 +166,12 @@ struct AddControllerSheet: View {
                     ForEach(hub.found.values.sorted { $0.rssi > $1.rssi }) { d in
                         let added = configured.contains(d.id) || names.contains(d.name)
                         Button {
-                            hub.add(device: d, ledCount: ledCount)
+                            if let t = target {
+                                hub.bind(t, to: d)
+                                target = hub.placeholders.first?.id
+                            } else {
+                                hub.add(device: d, ledCount: ledCount)
+                            }
                         } label: {
                             HStack {
                                 Image(systemName: "lightbulb.led.wide.fill").foregroundStyle(Theme.accent)
@@ -180,7 +200,7 @@ struct AddControllerSheet: View {
                     Button(hub.isScanning ? "Stop" : "Cerca") { hub.isScanning ? hub.stopScan() : hub.startScan() }
                 }
             }
-            .onAppear { hub.startScan() }
+            .onAppear { target = hub.placeholders.first?.id; hub.startScan() }
             .onDisappear { hub.stopScan() }
         }
         .preferredColorScheme(.dark)

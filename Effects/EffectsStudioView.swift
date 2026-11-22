@@ -42,6 +42,7 @@ struct EffectsStudioView: View {
                         }
                         Spacer()
                         if carMaps.active?.isDemo == true { Badge(text: "DEMO", color: Theme.warning) }
+                        if carMaps.active?.isDesign == true { Badge(text: "PROGETTO", color: Theme.warning) }
                     }
                     if carMaps.active == nil {
                         Text("Serve una mappa (Scansione o mappa dimostrativa nella Mappa 3D) per calcolare gli effetti sulle posizioni dei LED.")

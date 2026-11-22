@@ -36,6 +36,14 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 
 Il firmware più vicino analizzato (TR2309) ha buffer da **400 LED** e scrive fuori memoria, in modo persistente, oltre quel limite. Un solo controller da 1600 LED non è dimostrato: probabilmente servono più centraline (es. 4 × 400). L'app non supera 400 finché non sarà dimostrato il contrario. Dettagli in [docs/PROTOCOL.md §5](docs/PROTOCOL.md).
 
+## Versione 2.3 — progetto Blender A1 (1600 LED)
+
+- **Modello 3D**: `Resources/Audi_A1_LED1600.glb` è incluso e usato come modello predefinito. Lettore glTF binario proprio (mesh, nodi, materiali PBR senza texture); i 1600 nodi `LED_*` vengono esclusi perché i LED li disegna l'app. Nessuna scalatura: stesse coordinate del layout.
+- **Layout LED**: `Resources/Audi_A1_LED1600.json` (4 pacchi A–D × 200 pixel × 2 rami a Y = 1600 LED fisici, 800 pixel) si carica da Mappa 3D → menu mappa → "Carica layout A1 di progetto". Pacco A → 1ª centralina della lista, B → 2ª, …; quelle che mancano diventano centraline **da associare** (si associano da Aggiungi centralina).
+- La mappa è etichettata **"posizioni da progetto — non misurate"**: vale solo se le strisce sono montate come nel progetto. Va verificata con "Accendi" sui LED; una scansione misura le posizioni vere.
+- **Convenzione assi corretta**: x avanti, y alto, **sinistra = −z** (terna destrorsa come glTF/SceneKit). Prima l'app chiamava "sinistra" il lato +z, cioè il destro reale: zone, viste "Sinistra/Destra" ed effetto sinistra→destra ora corrispondono ai lati veri.
+- Da verificare sull'hardware: che l'ordine dei pacchi e degli indirizzi sull'auto montata corrisponda al file.
+
 ## Versione 2.0 — app completa
 
 Flusso: **Centraline** → **Scansione** → **Mappa 3D** → **Effetti** (Anteprima, poi Live) → **Preset**.

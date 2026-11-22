@@ -250,7 +250,7 @@ struct EffectContext {
     let u: [EffectAxis: [Double]]
     let zones: [CarZone]
     let hash: [Double]
-    /// Coordinate normalizzate −1…1 rispetto all'ingombro dei LED (x avanti, y alto, z sinistra).
+    /// Coordinate normalizzate −1…1 rispetto all'ingombro dei LED (x avanti, y alto, z destra: sinistra = −z).
     let norm: [SIMD3<Double>]
     /// Distanza dal centro in pianta (0…1) e angolo attorno all'auto (0…1).
     let radius: [Double]
@@ -282,7 +282,7 @@ struct EffectContext {
     static func component(_ p: SIMD3<Double>, _ axis: EffectAxis) -> Double {
         switch axis {
         case .frontBack: return p.x      // 1 = davanti
-        case .leftRight: return p.z      // 1 = sinistra
+        case .leftRight: return -p.z     // 1 = sinistra
         case .bottomTop: return p.y
         }
     }

@@ -60,6 +60,31 @@ final class ControllerHub: NSObject, ObservableObject {
         return c
     }
 
+    /// Centralina prevista da un layout di progetto ma non ancora associata a un dispositivo reale.
+    /// Non si collega a nulla finché non viene associata (nessuna scansione per nome vuoto).
+    @discardableResult
+    func addPlaceholder(name: String, ledCount: Int, copies: Int) -> ControllerConfig {
+        let n = controllers.count
+        let c = ControllerConfig(name: name, bleName: "", peripheralID: nil,
+                                 ledCount: min(max(ledCount, 1), IdealProtocol.maxSafeLEDs), order: n,
+                                 copiesPerPixel: min(max(copies, 1), 4), tint: n % 6)
+        controllers.append(c)
+        makeLink(c)
+        persist()
+        return c
+    }
+
+    var placeholders: [ControllerConfig] { controllers.filter { $0.isPlaceholder } }
+
+    /// Associa un dispositivo trovato a una centralina già configurata (es. segnaposto del layout).
+    func bind(_ id: UUID, to device: DiscoveredDevice) {
+        guard var c = config(id), !controllers.contains(where: { $0.id != id && ($0.peripheralID == device.id || $0.bleName == device.name) }) else { return }
+        disconnect(id)
+        c.bleName = device.name
+        c.peripheralID = device.id
+        update(c)
+    }
+
     func update(_ c: ControllerConfig) {
         guard let i = controllers.firstIndex(where: { $0.id == c.id }) else { return }
         var v = c
@@ -121,6 +146,10 @@ final class ControllerHub: NSObject, ObservableObject {
     func connect(_ id: UUID) {
         guard let link = links[id], let c = config(id), bluetoothState == .poweredOn else { return }
         if link.isReady || link.state.isBusy { return }
+        if c.isPlaceholder {
+            link.didFail("Da associare: aggiungi la centralina reale e associala a \"\(c.name)\"")
+            return
+        }
         manualDisconnect.remove(id)
         var p: CBPeripheral?
         if let pid = c.peripheralID { p = peripherals[pid] ?? central.retrievePeripherals(withIdentifiers: [pid]).first }

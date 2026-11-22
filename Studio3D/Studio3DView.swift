@@ -18,6 +18,16 @@ struct Studio3DView: View {
     @State private var importError: String?
     @State private var shareItem: ShareItem?
     @State private var lightResult: String?
+    @State private var importKind: ImportKind = .model
+    @State private var pendingLayout: PendingLayout?
+    @State private var layoutError: String?
+
+    enum ImportKind { case model, layout }
+    struct PendingLayout: Identifiable {
+        let id = UUID()
+        let result: LEDLayoutImport.Result
+        let name: String
+    }
 
     private var map: CarMap? { carMaps.active }
 
@@ -36,6 +46,7 @@ struct Studio3DView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             if model.isProvisional { Badge(text: "MODELLO PROVVISORIO — non è il modello fedele dell'A1", color: Theme.warning) }
                             if map?.isDemo == true { Badge(text: "MAPPA DIMOSTRATIVA — non è la tua auto", color: Theme.warning) }
+                            if map?.isDesign == true { Badge(text: "POSIZIONI DA PROGETTO — non misurate sull'auto", color: Theme.warning) }
                             if map == nil { Badge(text: "NESSUNA MAPPA", color: Theme.danger) }
                         }
                         .padding(10)
@@ -66,10 +77,13 @@ struct Studio3DView: View {
             Menu {
                 ForEach(carMaps.maps) { m in
                     Button { carMaps.activeID = m.id; player.setMap(m) } label: {
-                        Label(m.name, systemImage: m.id == carMaps.activeID ? "checkmark" : (m.isDemo ? "testtube.2" : "map"))
+                        Label(m.name, systemImage: m.id == carMaps.activeID ? "checkmark" : (m.isDemo ? "testtube.2" : (m.isDesign ? "pencil.and.ruler" : "map")))
                     }
                 }
                 Divider()
+                Button { loadBundledLayout() } label: { Label("Carica layout A1 di progetto (1600 LED)", systemImage: "pencil.and.ruler") }
+                    .disabled(ProjectLayout.bundledURL == nil)
+                Button { importKind = .layout; showImporter = true } label: { Label("Importa layout LED (JSON)…", systemImage: "doc.badge.plus") }
                 Button { createDemo() } label: { Label("Crea mappa dimostrativa", systemImage: "testtube.2") }
                     .disabled(hub.controllers.isEmpty)
                 Button {
@@ -80,14 +94,31 @@ struct Studio3DView: View {
                 }
             } label: { Image(systemName: "map") }
         }
-        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.usdz, UTType(filenameExtension: "scn") ?? .data, .data]) { result in
-            switch result {
-            case .success(let url):
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: importKind == .layout
+                      ? [.json, .data]
+                      : [UTType(filenameExtension: "glb") ?? .data, .usdz, UTType(filenameExtension: "scn") ?? .data, .data]) { result in
+            switch (importKind, result) {
+            case (.model, .success(let url)):
                 do { try model.importModel(from: url); importError = nil } catch { importError = error.localizedDescription }
-            case .failure(let e):
+            case (.layout, .success(let url)):
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                readLayout(try? Data(contentsOf: url), name: "Layout " + url.deletingPathExtension().lastPathComponent)
+            case (.model, .failure(let e)):
                 importError = e.localizedDescription
+            case (.layout, .failure(let e)):
+                layoutError = e.localizedDescription
             }
         }
+        .alert(item: $pendingLayout) { p in
+            Alert(title: Text("Importa layout di progetto"),
+                  message: Text(layoutSummary(p.result)),
+                  primaryButton: .default(Text("Importa")) { applyLayout(p) },
+                  secondaryButton: .cancel(Text("Annulla")))
+        }
+        .alert("Layout non importato", isPresented: Binding(get: { layoutError != nil }, set: { if !$0 { layoutError = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(layoutError ?? "") }
         .sheet(isPresented: $showAlign) { AlignmentSheet() }
         .sheet(item: $shareItem) { ActivityView(items: [$0.url]) }
         .onAppear { player.setMap(map) }
@@ -104,13 +135,18 @@ struct Studio3DView: View {
                 RoundedRectangle(cornerRadius: 3).fill(ControllerPalette.color(hub.config(led.key.controller)?.tint ?? 0)).frame(width: 5, height: 36)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(hub.name(of: led.key.controller)) · pixel \(led.key.pixel)").font(.headline)
-                    Text("Zona: \(ZoneClassifier.zone(of: car).label)").font(.caption).foregroundStyle(Theme.textSecondary)
+                    Text("Zona: \(ZoneClassifier.zone(of: car).label)\(led.part.map { " · parte: \($0)" } ?? "")\(led.branch.map { " · ramo \($0)" } ?? "")")
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
                 }
                 Spacer()
                 if let color { Circle().fill(Color(rgb: color)).frame(width: 22, height: 22) }
             }
             info("Posizione (auto)", String(format: "x %.2f  y %.2f  z %.2f m", car.x, car.y, car.z))
-            info("Affidabilità", String(format: "%.0f%% · %ld viste%@", led.confidence * 100, led.views, led.manual ? " · corretto a mano" : ""))
+            if map?.isDesign == true {
+                info("Origine", "posizione da progetto (non misurata)")
+            } else {
+                info("Affidabilità", String(format: "%.0f%% · %ld viste%@", led.confidence * 100, led.views, led.manual ? " · corretto a mano" : ""))
+            }
             info("Stesso pixel (a Y)", twins.isEmpty ? "nessun altro LED fisico" : "\(twins.count) altro LED fisico: hanno sempre lo stesso colore")
             HStack(spacing: 8) {
                 Button("Accendi") { light(led.key) }.buttonStyle(AccentButtonStyle(filled: false)).enabled(player.liveReady)
@@ -146,16 +182,24 @@ struct Studio3DView: View {
                 info("Nome", m.name)
                 info("LED fisici", "\(m.leds.count)")
                 info("Pixel coperti", "\(cov.found) / \(cov.total)")
-                info("Viste", "\(m.viewCount)")
+                if m.isDesign {
+                    Text("Posizioni prese dal progetto Blender: corrispondono all'auto solo se le strisce sono montate come nel progetto. Verifica con \"Accendi\" su alcuni LED; una scansione misura quelle vere.")
+                        .font(.caption).foregroundStyle(Theme.textSecondary)
+                } else {
+                    info("Viste", "\(m.viewCount)")
+                }
                 let low = m.leds.filter { $0.confidence < 0.5 }.count
                 if low > 0 { Text("\(low) LED con affidabilità bassa (in rosso con colori \"Affidabilità\").").font(.caption).foregroundStyle(Theme.warning) }
                 Button { showAlign = true } label: { Label("Allinea al modello", systemImage: "move.3d") }
                     .buttonStyle(AccentButtonStyle(filled: false))
-                    .disabled(m.isDemo)
+                    .disabled(!m.isMeasured)
             } else {
-                Text("Scansiona l'auto dalla sezione Scansione, oppure crea una mappa dimostrativa per provare l'interfaccia (sarà indicata come tale).")
+                Text("Scansiona l'auto dalla sezione Scansione, carica il layout di progetto (posizioni previste, non misurate) oppure crea una mappa dimostrativa.")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
-                Button("Crea mappa dimostrativa") { createDemo() }.buttonStyle(AccentButtonStyle(filled: false)).enabled(!hub.controllers.isEmpty)
+                HStack(spacing: 8) {
+                    Button("Layout di progetto") { loadBundledLayout() }.buttonStyle(AccentButtonStyle(filled: false)).enabled(ProjectLayout.bundledURL != nil)
+                    Button("Dimostrativa") { createDemo() }.buttonStyle(AccentButtonStyle(filled: false)).enabled(!hub.controllers.isEmpty)
+                }
             }
         }
     }
@@ -163,16 +207,22 @@ struct Studio3DView: View {
     private var modelCard: some View {
         Card(title: "Modello dell'auto", systemImage: "car.side") {
             ColorPicker("Colore carrozzeria", selection: Binding(get: { Color(rgb: model.bodyColor) }, set: { model.bodyColor = RGB($0) }), supportsOpacity: false)
+            if model.importedURL == nil && CarModelStore.projectModelURL != nil {
+                Toggle("Modello A1 del progetto", isOn: $model.useProjectModel)
+            }
             if model.isProvisional {
-                Text("Modello provvisorio con le dimensioni dell'Audi A1 Sportback 2020 (4,03 × 1,74 × 1,41 m). Per la forma reale importa un file USDZ o SCN di cui hai la licenza d'uso.")
+                Text("Modello provvisorio con le dimensioni dell'Audi A1 Sportback 2020 (4,03 × 1,74 × 1,41 m). Per la forma reale importa un file GLB, USDZ o SCN di cui hai la licenza d'uso.")
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+            } else if model.isProjectModel {
+                Text("Modello dal tuo progetto Blender (Audi_A1_LED1600.glb), nelle stesse coordinate del layout LED. Il colore si applica alla carrozzeria.")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
             } else {
                 Text("Modello importato. Il colore viene applicato ai materiali chiamati \"paint\"/\"body\": se non cambia, il file usa nomi diversi.")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
             }
             HStack(spacing: 8) {
-                Button("Importa USDZ/SCN") { showImporter = true }.buttonStyle(AccentButtonStyle(filled: false))
-                if !model.isProvisional {
+                Button("Importa GLB/USDZ/SCN") { importKind = .model; showImporter = true }.buttonStyle(AccentButtonStyle(filled: false))
+                if model.importedURL != nil {
                     Button { model.yawSteps = (model.yawSteps + 1) % 4 } label: { Image(systemName: "rotate.right") }
                         .buttonStyle(AccentButtonStyle(filled: false)).frame(width: 60)
                     Button { model.removeModel() } label: { Image(systemName: "trash") }
@@ -197,6 +247,34 @@ struct Studio3DView: View {
         let m = DemoLayout.make(controllers: hub.controllers)
         carMaps.save(m)
         player.setMap(m)
+    }
+
+    private func loadBundledLayout() {
+        readLayout(ProjectLayout.bundledURL.flatMap { try? Data(contentsOf: $0) }, name: "Layout A1 di progetto (1600 LED)")
+    }
+
+    private func readLayout(_ data: Data?, name: String) {
+        guard let data else { layoutError = "File non leggibile."; return }
+        do { pendingLayout = PendingLayout(result: try LEDLayoutImport.parse(data), name: name) }
+        catch { layoutError = error.localizedDescription }
+    }
+
+    private func layoutSummary(_ r: LEDLayoutImport.Result) -> String {
+        var lines = ["\(r.physicalCount) LED fisici, \(r.logicalCount) pixel. Posizioni previste dal progetto, non misurate."]
+        for a in ProjectLayout.assignments(r, controllers: hub.controllers) {
+            let dest = a.existing.map { "→ \($0.name)" } ?? "→ nuova \"Pacco \(a.fileName)\" da associare"
+            lines.append("\(a.fileName): \(a.addressCount) pixel × \(a.branches) \(dest)")
+        }
+        lines.append("L'ordine segue la lista Centraline: se un pacco è collegato a un'altra centralina, riordinale prima.")
+        lines += r.warnings
+        return lines.joined(separator: "\n")
+    }
+
+    private func applyLayout(_ p: PendingLayout) {
+        let m = ProjectLayout.makeMap(p.result, hub: hub, name: p.name)
+        carMaps.save(m)
+        player.setMap(m)
+        selectedID = nil
     }
 
     private func light(_ key: LEDKey) {

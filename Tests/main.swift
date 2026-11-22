@@ -336,13 +336,13 @@ let al = AutoAlign.fit(cloud)
 let alongX = cloud.map { al.toCar($0) }
 check(alongX.allSatisfy { abs($0.z) < 0.01 }, "allineamento: asse principale su x", "\(alongX.map { $0.z }.max() ?? 0)")
 check(ZoneClassifier.zone(of: SIMD3(1.9, 0.6, 0)) == .front && ZoneClassifier.zone(of: SIMD3(-1.9, 0.6, 0)) == .rear
-      && ZoneClassifier.zone(of: SIMD3(0, 0.6, 0.8)) == .left && ZoneClassifier.zone(of: SIMD3(0, 0.6, -0.8)) == .right
+      && ZoneClassifier.zone(of: SIMD3(0, 0.6, -0.8)) == .left && ZoneClassifier.zone(of: SIMD3(0, 0.6, 0.8)) == .right
       && ZoneClassifier.zone(of: SIMD3(0, 1.3, 0)) == .roof, "zone dell'auto")
 
 // MARK: Motore effetti
 let ctrl = UUID()
-var effPts: [EffectPoint] = (0..<40).map { EffectPoint(key: LEDKey(controller: ctrl, pixel: $0), position: SIMD3(-2 + Double($0) * 0.1, 0.5, 0.8)) }
-effPts.append(EffectPoint(key: LEDKey(controller: ctrl, pixel: 20), position: SIMD3(1.9, 0.5, -0.8)))   // copia a Y del pixel 20 (frontale)
+var effPts: [EffectPoint] = (0..<40).map { EffectPoint(key: LEDKey(controller: ctrl, pixel: $0), position: SIMD3(-2 + Double($0) * 0.1, 0.5, -0.8)) }
+effPts.append(EffectPoint(key: LEDKey(controller: ctrl, pixel: 20), position: SIMD3(1.9, 0.5, 0.8)))   // copia a Y del pixel 20 (frontale)
 let ctx = EffectContext(points: effPts)
 var solidP = EffectParams(); solidP.kind = .solid; solidP.colors = [.red]; solidP.intensity = 1
 let solidOut = EffectEngine.render(EffectProgram(name: "s", layers: [EffectLayer(params: solidP)]), context: ctx, time: 3)
@@ -440,6 +440,100 @@ check(IdealUUID.normalize("0000FFF0-0000-1000-8000-00805F9B34FB") == "FFF0", "uu
 check(IdealUUID.normalize("fff0") == "FFF0", "uuid: minuscole")
 check(IdealUUID.normalize(IdealUUID.command) == IdealUUID.command, "uuid: 128 bit proprietario invariato")
 check(CharacteristicRole.of("0000AE01-0000-1000-8000-00805F9B34FB") == .otaWrite, "uuid: AE01 lunga resta bloccata")
+
+// MARK: Convenzione assi (2.3: sinistra = −z come glTF/SceneKit)
+check(AxisFrame.app.toApp(SIMD3(1, 2, 3)) == SIMD3(1, 2, 3) && !AxisFrame.app.isMirror, "assi: sistema app invariato")
+let zUp = AxisFrame(front: SIMD3(0, -1, 0), up: SIMD3(0, 0, 1), left: SIMD3(1, 0, 0))   // es. Blender con auto verso −Y
+check(zUp.isValid && zUp.toApp(SIMD3(0, -2, 1)) == SIMD3(2, 1, 0) && zUp.toApp(SIMD3(1, 0, 0)) == SIMD3(0, 0, -1), "assi: conversione da z-alto")
+check(AxisFrame(front: SIMD3(1, 0, 0), up: SIMD3(0, 1, 0), left: SIMD3(0, 0, 1)).isMirror, "assi: sinistra +Z è una riflessione")
+check(AxisFrame.axis("-z") == SIMD3(0, 0, -1) && AxisFrame.axis("+X") == SIMD3(1, 0, 0) && AxisFrame.axis("W") == nil, "assi: lettura stringhe")
+
+// MARK: Layout LED di progetto
+let layoutJSON = """
+{"schema_version":1,"coordinate_system":{"format":"glTF","unit":"meter","up":"+Y","vehicle_front":"+X","vehicle_left":"-Z"},
+ "led_index_base":0,"physical_led_count":6,"topology":"mirrored_y","controllers":[
+ {"id":"A","address_count":2,"physical_led_count":4,"branch_count":2,"addresses":[
+   {"index":0,"zone":"tetto","targets":[{"branch":"left","position":[-1.0,1.4,-0.3]},{"branch":"right","position":[-1.0,1.4,0.3]}]},
+   {"index":1,"zone":"tetto","targets":[{"branch":"left","position":[-0.9,1.4,-0.3]},{"branch":"right","position":[-0.9,1.4,0.3]}]}]},
+ {"id":"B","address_count":3,"addresses":[{"index":2,"zone":"cofano","targets":[{"position":[1.5,0.9,-0.2]},{"position":[1.5,0.9,0.2]}]}]}]}
+"""
+do {
+    let r = try LEDLayoutImport.parse(Data(layoutJSON.utf8))
+    check(r.controllers.count == 2 && r.controllers[0].addressCount == 2 && r.controllers[1].addressCount == 3, "layout: centraline e indirizzi")
+    check(r.physicalCount == 6 && r.logicalCount == 3, "layout: LED fisici e pixel logici")
+    let left0 = r.points.first { $0.controller == 0 && $0.pixel == 0 && $0.branch == "left" }
+    check(left0?.position == SIMD3(-1.0, 1.4, -0.3) && ZoneClassifier.zone(of: SIMD3(0, 0.6, left0!.position.z)) == .left, "layout: ramo sinistro resta a −z (sinistra)")
+    check(r.points.filter { $0.controller == 1 }.allSatisfy { $0.pixel == 2 && $0.zone == "cofano" }, "layout: zona e indice")
+    check(r.controllers[1].branches == 2, "layout: copie a Y dedotte dai target")
+    check(r.warnings.contains { $0.contains("B") }, "layout: avviso indirizzi senza posizione")
+} catch { check(false, "layout: lettura", "\(error)") }
+func layoutFails(_ json: String) -> LEDLayoutImport.Failure? {
+    do { _ = try LEDLayoutImport.parse(Data(json.utf8)); return nil } catch { return error as? LEDLayoutImport.Failure }
+}
+check(layoutFails(#"{"controllers":[{"id":"A","addresses":[{"index":0,"targets":[]},{"index":0,"targets":[]}]}]}"#) == .duplicate("A", 0), "layout: indirizzo ripetuto rifiutato")
+check(layoutFails(#"{"controllers":[{"id":"A","address_count":401,"addresses":[]}]}"#) == .tooManyAddresses("A", 401), "layout: oltre 400 indirizzi rifiutato")
+check(layoutFails(#"{"controllers":[{"id":"A","addresses":[{"index":0,"targets":[{"position":[0,1]}]}]}]}"#) == .badPosition("A", 0), "layout: posizione incompleta rifiutata")
+check(layoutFails(#"{"controllers":[{"id":"A","addresses":[{"index":0,"targets":[{"position":[50,0,0]}]}]}]}"#) == .badPosition("A", 0), "layout: posizione fuori dall'auto rifiutata")
+check(layoutFails(#"{"controllers":[]}"#) == .noControllers, "layout: file vuoto")
+check(layoutFails(#"{"coordinate_system":{"up":"+Y","vehicle_front":"+Y"},"controllers":[{"id":"A","addresses":[]}]}"#) == .badAxes, "layout: assi doppi rifiutati")
+if let one = try? LEDLayoutImport.parse(Data(#"{"led_index_base":1,"controllers":[{"id":"A","addresses":[{"index":1,"targets":[{"position":[0,1,0]}]}]}]}"#.utf8)) {
+    check(one.points.first?.pixel == 0, "layout: base indice 1 convertita")
+} else { check(false, "layout: base indice 1") }
+
+// MARK: Modello glTF binario
+func makeGLB(json: String, bin: [UInt8]) -> Data {
+    var j = Array(json.utf8); while j.count % 4 != 0 { j.append(0x20) }
+    var b = bin; while b.count % 4 != 0 { b.append(0) }
+    func le(_ v: UInt32) -> [UInt8] { [UInt8(v & 0xFF), UInt8(v >> 8 & 0xFF), UInt8(v >> 16 & 0xFF), UInt8(v >> 24 & 0xFF)] }
+    var out: [UInt8] = Array("glTF".utf8) + le(2) + le(UInt32(12 + 8 + j.count + 8 + b.count))
+    out += le(UInt32(j.count)) + le(0x4E4F534A) + j
+    out += le(UInt32(b.count)) + le(0x004E4942) + b
+    return Data(out)
+}
+var triBin: [UInt8] = []
+for f in [Float(0), 0, 0, 1, 0, 0, 0, 1, 0] { let v = f.bitPattern; triBin += [UInt8(v & 0xFF), UInt8(v >> 8 & 0xFF), UInt8(v >> 16 & 0xFF), UInt8(v >> 24)] }
+triBin += [0, 0, 1, 0, 2, 0, 0, 0]
+let triJSON = """
+{"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0,1]}],
+ "nodes":[{"name":"Carrozzeria","mesh":0,"translation":[0,1,0]},{"name":"LED_A_000_left","mesh":0}],
+ "meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1,"material":0}]}],
+ "materials":[{"name":"Vernice","pbrMetallicRoughness":{"baseColorFactor":[0.1,0.2,0.3,1],"metallicFactor":0.7},"emissiveFactor":[1,0,0],"extensions":{"KHR_materials_emissive_strength":{"emissiveStrength":3}}}],
+ "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,1,0]},{"bufferView":1,"componentType":5123,"count":3,"type":"SCALAR"}],
+ "bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":6}],
+ "buffers":[{"byteLength":44}]}
+"""
+let triGLB = makeGLB(json: triJSON, bin: triBin)
+do {
+    let m = try GLTFModel.load(triGLB, skipNode: { $0.hasPrefix("LED_") })
+    check(m.parts.count == 1 && m.skippedNodes == 1, "glb: nodi LED esclusi")
+    check(m.parts[0].positions == [SIMD3(0, 1, 0), SIMD3(1, 1, 0), SIMD3(0, 2, 0)], "glb: traslazione del nodo applicata")
+    check(m.parts[0].indices == [0, 1, 2], "glb: indici a 16 bit")
+    check(m.materials[0].metallic == 0.7 && m.materials[0].roughness == 1 && m.materials[0].emissiveStrength == 3, "glb: materiale PBR")
+    let mir = try GLTFModel.load(triGLB, frame: AxisFrame(front: SIMD3(1, 0, 0), up: SIMD3(0, 1, 0), left: SIMD3(0, 0, 1)))
+    check(mir.parts.count == 2 && mir.parts[0].indices == [0, 2, 1], "glb: riflessione inverte i triangoli")
+} catch { check(false, "glb: lettura", "\(error)") }
+check((try? GLTFModel.load(Data("ciao".utf8))) == nil, "glb: file non glb rifiutato")
+var broken = [UInt8](triGLB); broken[broken.count - 4] = 9   // terzo indice → vertice 9 inesistente
+check((try? GLTFModel.load(Data(broken))) == nil, "glb: indici fuori intervallo rifiutati")
+check((try? GLTFModel.load(makeGLB(json: triJSON.replacingOccurrences(of: "\"buffers\":[{", with: "\"extensionsRequired\":[\"KHR_draco_mesh_compression\"],\"buffers\":[{"), bin: triBin))) == nil,
+      "glb: compressione Draco segnalata come non supportata")
+
+// MARK: File reali del progetto (se presenti nel repository)
+if let data = FileManager.default.contents(atPath: "Resources/Audi_A1_LED1600.json") {
+    if let r = try? LEDLayoutImport.parse(data) {
+        check(r.controllers.count == 4 && r.physicalCount == 1600 && r.logicalCount == 800, "progetto A1: 4 × 200 pixel, 1600 LED")
+        check(r.controllers.allSatisfy { $0.addressCount == 200 && $0.branches == 2 } && r.warnings.isEmpty, "progetto A1: pacchi a Y completi", r.warnings.joined(separator: "; "))
+        let lefts = r.points.filter { $0.branch == "left" }
+        check(!lefts.isEmpty && lefts.allSatisfy { $0.position.z <= 0 }, "progetto A1: ramo sinistro sul lato sinistro")
+    } else { check(false, "progetto A1: layout leggibile") }
+}
+if let data = FileManager.default.contents(atPath: "Resources/Audi_A1_LED1600.glb") {
+    do {
+        let m = try GLTFModel.load(data, skipNode: { $0.hasPrefix("LED_") })
+        check(m.skippedNodes == 1600 && m.triangleCount > 50_000, "progetto A1: modello letto senza i 1600 marcatori", "\(m.skippedNodes) \(m.triangleCount)")
+        check(abs(m.boundsMin.y) < 0.01 && abs(m.boundsMax.x - m.boundsMin.x - 4.12) < 0.05, "progetto A1: a terra, lungo ~4,1 m", "\(m.boundsMin) \(m.boundsMax)")
+    } catch { check(false, "progetto A1: modello", "\(error)") }
+}
 
 print("\n\(passed) superati, \(failures) falliti")
 if let dir = CommandLine.arguments.dropFirst().first {

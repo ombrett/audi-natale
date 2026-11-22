@@ -134,7 +134,7 @@ enum LEDReconstructor {
     }
 }
 
-/// Allineamento della nuvola di LED al sistema dell'auto: x avanti, y in alto, z a sinistra, metri,
+/// Allineamento della nuvola di LED al sistema dell'auto: x avanti, y in alto, z a destra (sinistra = −z, terna destrorsa come glTF/SceneKit), metri,
 /// origine al centro dell'auto a terra.
 struct CarAlignment: Codable, Equatable {
     var yaw: Double = 0                     // rotazione attorno a y
@@ -195,7 +195,7 @@ enum ZoneClassifier {
         if p.y > CarDimensions.height * 0.78 { return .roof }
         if p.x > halfL * 0.62 { return .front }
         if p.x < -halfL * 0.62 { return .rear }
-        return p.z >= 0 ? .left : .right
+        return p.z <= 0 ? .left : .right   // z negativo = sinistra (come glTF)
     }
 
     static func contains(_ zone: CarZone, _ p: SIMD3<Double>) -> Bool {

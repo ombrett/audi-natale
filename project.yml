@@ -18,12 +18,14 @@ targets:
       - Scan3D
       - Studio3D
       - Effects
+      - path: Resources
+        buildPhase: resources
     scheme: {}
     info:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Audi Light Studio
-        CFBundleShortVersionString: "2.0.0"
+        CFBundleShortVersionString: "2.3.0"
         CFBundleVersion: "1"
         LSRequiresIPhoneOS: true
         UILaunchScreen: {}
