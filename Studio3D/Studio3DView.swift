@@ -1,0 +1,278 @@
+import SwiftUI
+import UniformTypeIdentifiers
+
+/// Mappa 3D / 3D Studio: modello dell'auto, LED mappati, selezione, filtri, allineamento.
+struct Studio3DView: View {
+    @EnvironmentObject var hub: ControllerHub
+    @EnvironmentObject var carMaps: CarMapStore
+    @EnvironmentObject var player: EffectPlayer
+    @EnvironmentObject var model: CarModelStore
+
+    @State private var coloring: LEDColoring = .controller
+    @State private var filter: LEDFilter = .all
+    @State private var camera: CameraPreset = .iso
+    @State private var camToken = 0
+    @State private var selectedID: UUID?
+    @State private var showImporter = false
+    @State private var showAlign = false
+    @State private var importError: String?
+    @State private var shareItem: ShareItem?
+    @State private var lightResult: String?
+
+    private var map: CarMap? { carMaps.active }
+
+    var body: some View {
+        let built = SceneContentBuilder.build(map: map, colors: player.colors, coloring: coloring, filter: filter,
+                                              controllers: hub.controllers, selected: selectedID, model: model)
+        ScrollView {
+            VStack(spacing: 14) {
+                Card {
+                    ZStack(alignment: .topLeading) {
+                        CarSceneView(content: built.0, camera: camera, cameraToken: camToken) { idx in
+                            selectedID = idx.flatMap { built.1.indices.contains($0) ? built.1[$0] : nil }
+                        }
+                        .frame(height: 420)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        VStack(alignment: .leading, spacing: 6) {
+                            if model.isProvisional { Badge(text: "MODELLO PROVVISORIO — non è il modello fedele dell'A1", color: Theme.warning) }
+                            if map?.isDemo == true { Badge(text: "MAPPA DIMOSTRATIVA — non è la tua auto", color: Theme.warning) }
+                            if map == nil { Badge(text: "NESSUNA MAPPA", color: Theme.danger) }
+                        }
+                        .padding(10)
+                    }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(CameraPreset.allCases) { p in
+                                Button(p.label) { camera = p; camToken += 1 }
+                                    .font(.caption.weight(.semibold))
+                                    .padding(.horizontal, 12).padding(.vertical, 7)
+                                    .background(Capsule().fill(camera == p ? Theme.accentDim : Theme.surfaceHigh))
+                            }
+                        }
+                    }
+                    Text("Trascina per ruotare a 360°, pizzica per ingrandire, tocca un LED per i dettagli.")
+                        .font(.caption2).foregroundStyle(Theme.textSecondary)
+                }
+                if let led = map?.leds.first(where: { $0.id == selectedID }) { selectionCard(led) }
+                displayCard
+                mapCard
+                modelCard
+            }
+            .padding()
+        }
+        .screenBackground()
+        .navigationTitle("Mappa 3D")
+        .toolbar {
+            Menu {
+                ForEach(carMaps.maps) { m in
+                    Button { carMaps.activeID = m.id; player.setMap(m) } label: {
+                        Label(m.name, systemImage: m.id == carMaps.activeID ? "checkmark" : (m.isDemo ? "testtube.2" : "map"))
+                    }
+                }
+                Divider()
+                Button { createDemo() } label: { Label("Crea mappa dimostrativa", systemImage: "testtube.2") }
+                    .disabled(hub.controllers.isEmpty)
+                Button {
+                    if let url = try? carMaps.exportJSON() { shareItem = ShareItem(url: url) }
+                } label: { Label("Esporta mappe (JSON)", systemImage: "square.and.arrow.up") }
+                if let m = map {
+                    Button(role: .destructive) { carMaps.delete(m.id); player.setMap(carMaps.active) } label: { Label("Elimina mappa attiva", systemImage: "trash") }
+                }
+            } label: { Image(systemName: "map") }
+        }
+        .fileImporter(isPresented: $showImporter, allowedContentTypes: [.usdz, UTType(filenameExtension: "scn") ?? .data, .data]) { result in
+            switch result {
+            case .success(let url):
+                do { try model.importModel(from: url); importError = nil } catch { importError = error.localizedDescription }
+            case .failure(let e):
+                importError = e.localizedDescription
+            }
+        }
+        .sheet(isPresented: $showAlign) { AlignmentSheet() }
+        .sheet(item: $shareItem) { ActivityView(items: [$0.url]) }
+        .onAppear { player.setMap(map) }
+    }
+
+    // MARK: Card
+
+    private func selectionCard(_ led: PhysicalLED) -> some View {
+        let car = map?.carPosition(led) ?? .zero
+        let twins = map?.twins(of: led) ?? []
+        let color = player.colors[led.key]
+        return Card(title: "LED selezionato", systemImage: "scope") {
+            HStack {
+                RoundedRectangle(cornerRadius: 3).fill(ControllerPalette.color(hub.config(led.key.controller)?.tint ?? 0)).frame(width: 5, height: 36)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(hub.name(of: led.key.controller)) · pixel \(led.key.pixel)").font(.headline)
+                    Text("Zona: \(ZoneClassifier.zone(of: car).label)").font(.caption).foregroundStyle(Theme.textSecondary)
+                }
+                Spacer()
+                if let color { Circle().fill(Color(rgb: color)).frame(width: 22, height: 22) }
+            }
+            info("Posizione (auto)", String(format: "x %.2f  y %.2f  z %.2f m", car.x, car.y, car.z))
+            info("Affidabilità", String(format: "%.0f%% · %ld viste%@", led.confidence * 100, led.views, led.manual ? " · corretto a mano" : ""))
+            info("Stesso pixel (a Y)", twins.isEmpty ? "nessun altro LED fisico" : "\(twins.count) altro LED fisico: hanno sempre lo stesso colore")
+            HStack(spacing: 8) {
+                Button("Accendi") { light(led.key) }.buttonStyle(AccentButtonStyle(filled: false)).enabled(player.liveReady)
+                Stepper("Pixel", onIncrement: { reassign(led, by: 1) }, onDecrement: { reassign(led, by: -1) }).labelsHidden()
+                Button(role: .destructive) { remove(led) } label: { Image(systemName: "trash") }
+                    .buttonStyle(AccentButtonStyle(color: Theme.danger, filled: false)).frame(width: 60)
+            }
+            if let lightResult { Text(lightResult).font(.caption).foregroundStyle(Theme.textSecondary) }
+        }
+    }
+
+    private var displayCard: some View {
+        Card(title: "Visualizzazione", systemImage: "eye") {
+            Picker("Colori", selection: $coloring) {
+                ForEach(LEDColoring.allCases) { Text($0.rawValue).tag($0) }
+            }.pickerStyle(.segmented)
+            Picker("Mostra", selection: $filter) {
+                Text("Impianto completo").tag(LEDFilter.all)
+                ForEach(hub.controllers) { c in Text("Solo \(c.name)").tag(LEDFilter.controller(c.id)) }
+                ForEach(CarZone.allCases.filter { $0 != .all }) { z in Text("Zona: \(z.label)").tag(LEDFilter.zone(z)) }
+            }
+            .pickerStyle(.menu)
+            if coloring == .effect && player.colors.isEmpty {
+                Text("Avvia un effetto dalla sezione Effetti per vederlo qui.").font(.caption).foregroundStyle(Theme.textSecondary)
+            }
+        }
+    }
+
+    private var mapCard: some View {
+        Card(title: "Mappa", systemImage: "point.3.filled.connected.trianglepath.dotted") {
+            if let m = map {
+                let cov = m.coverage(codebook: hub.codebook)
+                info("Nome", m.name)
+                info("LED fisici", "\(m.leds.count)")
+                info("Pixel coperti", "\(cov.found) / \(cov.total)")
+                info("Viste", "\(m.viewCount)")
+                let low = m.leds.filter { $0.confidence < 0.5 }.count
+                if low > 0 { Text("\(low) LED con affidabilità bassa (in rosso con colori \"Affidabilità\").").font(.caption).foregroundStyle(Theme.warning) }
+                Button { showAlign = true } label: { Label("Allinea al modello", systemImage: "move.3d") }
+                    .buttonStyle(AccentButtonStyle(filled: false))
+                    .disabled(m.isDemo)
+            } else {
+                Text("Scansiona l'auto dalla sezione Scansione, oppure crea una mappa dimostrativa per provare l'interfaccia (sarà indicata come tale).")
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+                Button("Crea mappa dimostrativa") { createDemo() }.buttonStyle(AccentButtonStyle(filled: false)).enabled(!hub.controllers.isEmpty)
+            }
+        }
+    }
+
+    private var modelCard: some View {
+        Card(title: "Modello dell'auto", systemImage: "car.side") {
+            ColorPicker("Colore carrozzeria", selection: Binding(get: { Color(rgb: model.bodyColor) }, set: { model.bodyColor = RGB($0) }), supportsOpacity: false)
+            if model.isProvisional {
+                Text("Modello provvisorio con le dimensioni dell'Audi A1 Sportback 2020 (4,03 × 1,74 × 1,41 m). Per la forma reale importa un file USDZ o SCN di cui hai la licenza d'uso.")
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+            } else {
+                Text("Modello importato. Il colore viene applicato ai materiali chiamati \"paint\"/\"body\": se non cambia, il file usa nomi diversi.")
+                    .font(.caption).foregroundStyle(Theme.textSecondary)
+            }
+            HStack(spacing: 8) {
+                Button("Importa USDZ/SCN") { showImporter = true }.buttonStyle(AccentButtonStyle(filled: false))
+                if !model.isProvisional {
+                    Button { model.yawSteps = (model.yawSteps + 1) % 4 } label: { Image(systemName: "rotate.right") }
+                        .buttonStyle(AccentButtonStyle(filled: false)).frame(width: 60)
+                    Button { model.removeModel() } label: { Image(systemName: "trash") }
+                        .buttonStyle(AccentButtonStyle(color: Theme.danger, filled: false)).frame(width: 60)
+                }
+            }
+            if let importError { Text(importError).font(.caption).foregroundStyle(Theme.danger) }
+        }
+    }
+
+    private func info(_ k: String, _ v: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(k).font(.caption).foregroundStyle(Theme.textSecondary)
+            Spacer()
+            Text(v).font(Theme.monoSmall).multilineTextAlignment(.trailing)
+        }
+    }
+
+    // MARK: Azioni
+
+    private func createDemo() {
+        let m = DemoLayout.make(controllers: hub.controllers)
+        carMaps.save(m)
+        player.setMap(m)
+    }
+
+    private func light(_ key: LEDKey) {
+        lightResult = "Invio…"
+        player.sendOnce([key: RGB(r: 255, g: 255, b: 255)]) { err in lightResult = err ?? "Acceso \(hub.name(of: key.controller)) #\(key.pixel) (gli altri spenti)" }
+    }
+
+    private func reassign(_ led: PhysicalLED, by delta: Int) {
+        guard var m = map, let i = m.leds.firstIndex(where: { $0.id == led.id }) else { return }
+        let maxPixel = (hub.config(led.key.controller)?.ledCount ?? 1) - 1
+        m.leds[i].key.pixel = min(max(m.leds[i].key.pixel + delta, 0), maxPixel)
+        m.leds[i].manual = true
+        carMaps.save(m)
+        player.setMap(m)
+    }
+
+    private func remove(_ led: PhysicalLED) {
+        guard var m = map else { return }
+        m.leds.removeAll { $0.id == led.id }
+        carMaps.save(m)
+        player.setMap(m)
+        selectedID = nil
+    }
+}
+
+/// Allineamento manuale/automatico della nuvola di LED al modello.
+struct AlignmentSheet: View {
+    @EnvironmentObject var carMaps: CarMapStore
+    @EnvironmentObject var player: EffectPlayer
+    @Environment(\.dismiss) private var dismiss
+    @State private var a = CarAlignment()
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Button("Allineamento automatico") {
+                        if let m = carMaps.active { a = AutoAlign.fit(m.leds.map { $0.world }) }
+                    }
+                    Button("Inverti davanti/dietro") { a.yaw += .pi }
+                } footer: {
+                    Text("L'automatico porta l'asse più lungo della nuvola di LED lungo l'auto. Il verso avanti/dietro va scelto a mano.")
+                }
+                Section("Rotazione") {
+                    Slider(value: Binding(get: { a.yaw * 180 / .pi }, set: { a.yaw = $0 * .pi / 180 }), in: -180...180) { Text("Imbardata") }
+                    Text(String(format: "%.0f°", a.yaw * 180 / .pi)).font(Theme.monoSmall)
+                }
+                Section("Posizione (m)") {
+                    slider("Avanti/dietro", Binding(get: { a.offset.x }, set: { a.offset.x = $0 }), -5...5)
+                    slider("Altezza", Binding(get: { a.offset.y }, set: { a.offset.y = $0 }), -3...3)
+                    slider("Sinistra/destra", Binding(get: { a.offset.z }, set: { a.offset.z = $0 }), -5...5)
+                }
+                Section("Scala") {
+                    slider("Scala", $a.scale, 0.8...1.2)
+                }
+            }
+            .navigationTitle("Allinea")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Annulla") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Salva") {
+                        if var m = carMaps.active { m.alignment = a; carMaps.save(m); player.setMap(m) }
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear { a = carMaps.active?.alignment ?? CarAlignment() }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func slider(_ title: String, _ value: Binding<Double>, _ range: ClosedRange<Double>) -> some View {
+        VStack(alignment: .leading) {
+            HStack { Text(title); Spacer(); Text(String(format: "%.2f", value.wrappedValue)).font(Theme.monoSmall) }
+            Slider(value: value, in: range)
+        }
+    }
+}
