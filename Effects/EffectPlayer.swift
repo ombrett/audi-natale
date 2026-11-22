@@ -22,6 +22,13 @@ final class EffectPlayer: ObservableObject {
     @Published private(set) var liveFPS: Double?
     @Published private(set) var lastFrameSeconds: Double?
     @Published private(set) var liveStatus: String?
+    /// Animazione pre-calcolata in riproduzione (pacchetto effetti), alternativa al programma.
+    @Published private(set) var clip: FramePack.Preset?
+    @Published var clipSettings = FramePack.Settings()
+    private var clipPack: FramePack?
+    /// Posizione nell'animazione in secondi: accumula il tempo × velocità, così cambiare velocità non fa salti.
+    private var clipPosition = 0.0
+    private var lastTick = CACurrentMediaTime()
 
     let hub: ControllerHub
     let library: EffectLibrary
@@ -53,6 +60,7 @@ final class EffectPlayer: ObservableObject {
     // MARK: Controllo
 
     func play(_ p: EffectProgram) {
+        clip = nil
         playlist = nil
         program = p
         start()
@@ -60,16 +68,33 @@ final class EffectPlayer: ObservableObject {
 
     func play(_ pl: Playlist) {
         guard let first = pl.items.first, let p = library.program(first.programID) else { return }
+        clip = nil
         playlist = pl
         playlistIndex = 0
         program = p
         start()
     }
 
+    /// Riproduce un preset del pacchetto di animazioni pre-calcolate.
+    func play(clip p: FramePack.Preset, in pack: FramePack) {
+        playlist = nil
+        clipPack = pack
+        clip = p
+        clipPosition = 0
+        start()
+    }
+
     /// Aggiorna il programma in riproduzione senza ripartire (modifiche dall'editor).
     func update(_ p: EffectProgram) {
         program = p
-        if !isPlaying { renderPreview(p, at: time) }
+        if !isPlaying && clip == nil { renderPreview(p, at: time) }
+    }
+
+    /// Fotogramma corrente dell'animazione pre-calcolata, per pixel logico.
+    private func clipColors() -> [LEDKey: RGB]? {
+        guard let clip, let clipPack else { return nil }
+        let index = FramePack.frameIndex(clip, position: clipPosition)
+        return FramePack.keyed(clipPack.colors(clip, frame: index, settings: clipSettings), controllers: hub.controllers)
     }
 
     func stop() {
@@ -82,6 +107,7 @@ final class EffectPlayer: ObservableObject {
     private func start() {
         startTime = CACurrentMediaTime()
         itemStart = startTime
+        lastTick = startTime
         isPlaying = true
         displayTimer?.invalidate()
         displayTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.tick() }
@@ -99,7 +125,16 @@ final class EffectPlayer: ObservableObject {
     }
 
     private func tick() {
-        guard isPlaying, let program else { return }
+        guard isPlaying else { return }
+        let now = CACurrentMediaTime()
+        let dt = min(now - lastTick, 0.5)
+        lastTick = now
+        if clip != nil {
+            clipPosition += dt * clipSettings.clamped.speed
+            if mode == .preview, let c = clipColors() { colors = c }
+            return
+        }
+        guard let program else { return }
         advancePlaylistIfNeeded()
         if mode == .preview { renderPreview(program, at: time) }
     }
@@ -126,7 +161,7 @@ final class EffectPlayer: ObservableObject {
     private func startLive() {
         guard !liveRunning else { return }
         guard liveReady else { liveStatus = "Nessuna centralina pronta: collegale dalla schermata Centraline."; return }
-        guard context != nil else { liveStatus = "Serve una mappa salvata."; return }
+        guard clip != nil || context != nil else { liveStatus = "Serve una mappa salvata."; return }
         liveRunning = true
         frameTimes = []
         liveStatus = nil
@@ -134,11 +169,15 @@ final class EffectPlayer: ObservableObject {
     }
 
     private func sendNextFrame() {
-        guard liveRunning, isPlaying, mode == .live, let program, let context else { liveRunning = false; return }
-        let t = time
-        let frame = EffectEngine.render(program, context: context, time: t)
+        guard liveRunning, isPlaying, mode == .live else { liveRunning = false; return }
+        let frame: [LEDKey: RGB]
+        if clip != nil, let c = clipColors() {
+            frame = c
+        } else if let program, let context {
+            frame = EffectEngine.render(program, context: context, time: time)
+        } else { liveRunning = false; return }
         colors = frame   // il modello mostra esattamente ciò che viene inviato
-        let targets = FrameSplitter.split(frame, controllers: controllers)
+        let targets = FrameSplitter.split(frame, controllers: hub.controllers)
         let since = Date()
         let began = CACurrentMediaTime()
         hub.apply(targets, brightness: brightness, window: window)

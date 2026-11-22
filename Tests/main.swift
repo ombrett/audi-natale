@@ -535,6 +535,42 @@ if let data = FileManager.default.contents(atPath: "Resources/Audi_A1_LED1600.gl
     } catch { check(false, "progetto A1: modello", "\(error)") }
 }
 
+// MARK: Pacchetto animazioni pre-calcolate
+func packJSON(frames: [UInt8], count: Int, loop: Bool, fps: Int = 2, addresses: Int = 2) -> String {
+    """
+    {"schema_version":1,"pixel_format":"RGB8","packing":"frame_major_rgb","topology":"mirrored_y",
+     "controller_order":[{"id":"A","address_count":\(addresses)}],
+     "presets":[{"id":"t","name":"Test","fps":\(fps),"frame_count":\(count),"loop":\(loop),"frames_b64":"\(Data(frames).base64EncodedString())"}]}
+    """
+}
+// 3 fotogrammi × 2 indirizzi: rosso/verde, poi grigio 100, poi blu
+let packFrames: [UInt8] = [255, 0, 0, 0, 255, 0,  100, 100, 100, 100, 100, 100,  0, 0, 255, 0, 0, 255]
+if let pack = try? FramePack.load(Data(packJSON(frames: packFrames, count: 3, loop: true).utf8)), let tp = pack.preset("t") {
+    check(pack.frameBytes == 6 && tp.duration == 1.5, "pacchetto: dimensioni e durata")
+    check(FramePack.frameIndex(tp, position: 0.6) == 1 && FramePack.frameIndex(tp, position: 1.6) == 0, "pacchetto: loop riparte")
+    check(pack.colors(tp, frame: 0) == [[.red, .green]], "pacchetto: colori per indirizzo")
+    var half = FramePack.Settings(); half.intensity = 0.5
+    check(pack.colors(tp, frame: 1, settings: half)[0][0] == RGB(r: 50, g: 50, b: 50), "pacchetto: intensità")
+    var tinted = FramePack.Settings(); tinted.tint = RGB(r: 0, g: 200, b: 255)
+    check(pack.colors(tp, frame: 0, settings: tinted)[0][0] == RGB(r: 0, g: 200, b: 255), "pacchetto: colore unico segue la luminosità")
+    var crazy = FramePack.Settings(); crazy.speed = 9; crazy.intensity = -3
+    check(crazy.clamped.speed == 2 && crazy.clamped.intensity == 0, "pacchetto: limiti velocità/intensità")
+    let cA = ControllerConfig(name: "A", bleName: "x", ledCount: 1, order: 0)
+    let keyedColors = FramePack.keyed(pack.colors(tp, frame: 0), controllers: [cA])
+    check(keyedColors.count == 1 && keyedColors[LEDKey(controller: cA.id, pixel: 0)] == .red, "pacchetto: A → prima centralina, entro i suoi pixel")
+} else { check(false, "pacchetto: lettura") }
+if let once = try? FramePack.load(Data(packJSON(frames: packFrames, count: 3, loop: false).utf8)), let op = once.preset("t") {
+    check(FramePack.frameIndex(op, position: 99) == 2, "pacchetto: senza loop resta sull'ultimo fotogramma")
+} else { check(false, "pacchetto: lettura senza loop") }
+check((try? FramePack.load(Data(packJSON(frames: packFrames, count: 4, loop: true).utf8))) == nil, "pacchetto: fotogrammi mancanti rifiutati")
+check((try? FramePack.load(Data(packJSON(frames: [], count: 1, loop: true, addresses: 401).utf8))) == nil, "pacchetto: oltre 400 indirizzi rifiutato")
+if let data = FileManager.default.contents(atPath: "Resources/AudiLightStudio_Effetti.json") {
+    if let pack = try? FramePack.load(data) {
+        check(pack.presets.count == 60 && pack.controllerIDs == ["A", "B", "C", "D"] && pack.addressCounts == [200, 200, 200, 200],
+              "pacchetto A1: 60 animazioni su A–D × 200")
+    } else { check(false, "pacchetto A1: leggibile") }
+}
+
 print("\n\(passed) superati, \(failures) falliti")
 if let dir = CommandLine.arguments.dropFirst().first {
     try? "\(passed) superati, \(failures) falliti\n".write(toFile: dir + "/logic-summary.txt", atomically: true, encoding: .utf8)

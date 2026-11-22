@@ -36,6 +36,12 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 
 Il firmware più vicino analizzato (TR2309) ha buffer da **400 LED** e scrive fuori memoria, in modo persistente, oltre quel limite. Un solo controller da 1600 LED non è dimostrato: probabilmente servono più centraline (es. 4 × 400). L'app non supera 400 finché non sarà dimostrato il contrario. Dettagli in [docs/PROTOCOL.md §5](docs/PROTOCOL.md).
 
+## Versione 2.4 — pacchetto 60 animazioni
+
+- `Resources/AudiLightStudio_Effetti.json`: 60 animazioni pre-calcolate (RGB8, 24 fps) per i pacchi A–D × 200 indirizzi. Preset → "Pacchetto animazioni A1": anteprima 3D, Live, velocità 0,5–2×, intensità, colore unico.
+- Lettore proprio (`Logic/FramePack.swift`) con controlli di formato; A → 1ª centralina della lista, B → 2ª, ecc.
+- Il Live invia l'ultimo fotogramma disponibile quando le centraline hanno confermato il precedente: la fluidità reale dipende dal BLE (~72 comandi/s per centralina).
+
 ## Versione 2.3 — progetto Blender A1 (1600 LED)
 
 - **Modello 3D**: `Resources/Audi_A1_LED1600.glb` è incluso e usato come modello predefinito. Lettore glTF binario proprio (mesh, nodi, materiali PBR senza texture); i 1600 nodi `LED_*` vengono esclusi perché i LED li disegna l'app. Nessuna scalatura: stesse coordinate del layout.
