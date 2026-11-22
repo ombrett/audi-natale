@@ -147,7 +147,7 @@ struct EditorView: View {
             Toggle("Live: invia a ogni tratto", isOn: $live).font(.subheadline)
             Stepper("Finestra di invio: \(settings.sendWindow)", value: $settings.sendWindow, in: 1...8)
                 .font(.subheadline)
-            Text("Comandi mandati prima di aspettare le conferme. 1 = il più sicuro; prova 4, poi 6–8 se non ci sono ritentativi.")
+            Text("Comandi mandati prima di aspettare le conferme. Verificato su ISP-B0717F: 6 = ~72 cmd/s senza ritentativi; 8 non è più veloce.")
                 .font(.caption2).foregroundStyle(Theme.textSecondary)
             HStack(spacing: 10) {
                 Button {

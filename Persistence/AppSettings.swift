@@ -39,7 +39,7 @@ final class AppSettings: ObservableObject {
         let storedCount = defaults.object(forKey: Keys.ledCount) as? Int ?? 200
         ledCount = min(max(storedCount, 1), IdealProtocol.maxSafeLEDs)
         lastPeripheralID = defaults.string(forKey: Keys.lastPeripheral)
-        sendWindow = min(max(defaults.object(forKey: Keys.sendWindow) as? Int ?? 4, 1), 8)
+        sendWindow = min(max(defaults.object(forKey: Keys.sendWindow) as? Int ?? 6, 1), 8)
     }
 
     /// Tag a cui un controller specifico ha risposto con un ack ("…OK"): verificati sul dispositivo.

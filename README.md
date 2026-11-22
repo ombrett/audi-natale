@@ -9,7 +9,7 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 | Milestone | Contenuto | Stato reale |
 |---|---|---|
 | 1 | Progetto SwiftUI, Bluetooth Lab, connessione, diagnostica, log, HEX, build CI | **Completata e provata** sull'auto il 22/11/2026 (build CI verde, 67 test). |
-| 2 | Protocollo verificato, primo pixel, più pixel, disegni | Primo pixel **verificato**. Editor 200 LED con invio `DOOD` confermato pixel per pixel e preset: **da provare sull'auto**. `DOOT` in blocco disattivato finché non è catturato con MTU 23. |
+| 2 | Protocollo verificato, primo pixel, più pixel, disegni | Primo pixel **verificato**. Editor 200 LED **verificato**: invio `DOOD` a finestra 6, ~72 comandi/s (disegno completo ≈ 3 s), 0 errori. `DOOT` in blocco disattivato finché non è catturato con MTU 23. |
 | 3 | Mappatura con fotocamera | Non iniziata (schermata segnaposto) |
 | 4 | Editor, animazioni, 1600 LED | Non iniziata (schermata segnaposto) |
 

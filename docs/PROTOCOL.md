@@ -38,7 +38,17 @@ Conseguenze:
 - Chiave AES, formato `DOOD` e indice big-endian confermati: il LED fisico 1 è l'indice 0.
 - Il firmware è della famiglia **TR2309**, la stessa dell'immagine `TR2309R002-02` analizzata da glowmote. Il limite di **400 LED per centralina** è quindi molto probabile anche qui (variante R012, non ancora disassemblata).
 - Con MTU 23 i frame bulk `DOOT` su …960A devono stare in 20 byte (l'app vendor usa frame corti quando l'MTU non è alta): da implementare e verificare nella Milestone 2.
-- Un `DOOD` per pixel con attesa dell'ack richiede ~50–65 ms: circa 15–20 pixel/s. Per i disegni completi serve `DOOT`.
+- Velocità `DOOD` misurata con l'editor (disegno arcobaleno, 200 comandi, finestra = comandi inviati prima di attendere i `DOODOK`):
+
+| Finestra | cmd/s | Ritentativi | Esito visivo |
+|---|---|---|---|
+| 1 | 16,7 | 0 | corretto |
+| 4 | 53,3 | — | — |
+| 6 | **71,7** | **0** | **completo, nessun errore** |
+| 8 | 69,2 | — | — |
+
+  Il controller satura intorno a 70 comandi/s: default 6. Un disegno completo da 200 LED ≈ 3 s.
+  `DOOT` in blocco resterebbe più veloce ma non è catturato con MTU 23: disattivato.
 
 ## 1. Compatibilità con ISP-B0717F
 
