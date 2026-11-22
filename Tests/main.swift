@@ -137,8 +137,8 @@ check(PixelPlanner.mostFrequent([.red, .blue, .blue]) == .blue, "colore più fre
 
 // MARK: Effetti (vettori glowmote, catture su ISP-50542B)
 func cipherHex(_ p: [UInt8]) -> String { Hex.string(IdealCrypto.encrypt(p) ?? [], separator: "").lowercased() }
-let sglsRed = try! IdealProtocol.effect(mode: 0, reversed: false, speed: 0x50, foreground: .red, background: .red, brightness: 100)
-check(cipherHex(sglsRed) == "73baa3e311ef375b0c2965911e7f5357", "SGLS rosso = cattura")
+let sglsRedEffect = try! IdealProtocol.effect(mode: 0, reversed: false, speed: 0x50, foreground: .red, background: .red, brightness: 100)
+check(cipherHex(sglsRedEffect) == "73baa3e311ef375b0c2965911e7f5357", "SGLS rosso = cattura")
 let sglsGreen = try! IdealProtocol.effect(mode: 0, reversed: false, speed: 0x50, foreground: .green, background: .green, brightness: 100)
 check(cipherHex(sglsGreen) == "a06566adefd31c59d5c85979620ce9ef", "SGLS verde = cattura")
 let sglsBlue = try! IdealProtocol.effect(mode: 0, reversed: false, speed: 0x50, foreground: .blue, background: .blue, brightness: 100)
