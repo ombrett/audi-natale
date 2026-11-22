@@ -187,7 +187,7 @@ final class ControllerLink: NSObject, ObservableObject, Identifiable {
     @discardableResult
     func write(_ bytes: [UInt8], to uuid: String, label: String) -> String? {
         guard CharacteristicRole.of(uuid).writable else { return "Caratteristica non autorizzata" }
-        guard let p = peripheral, let c = chars[uuid.uppercased()] else { return "Non collegata" }
+        guard let p = peripheral, let c = chars[IdealUUID.normalize(uuid)] else { return "Non collegata" }
         guard bytes.count <= p.maximumWriteValueLength(for: .withoutResponse) else { return "Pacchetto oltre l'MTU" }
         let data = Data(bytes)
         if p.canSendWriteWithoutResponse && writeQueue.isEmpty {
@@ -403,15 +403,18 @@ final class ControllerLink: NSObject, ObservableObject, Identifiable {
 
 extension ControllerLink: CBPeripheralDelegate {
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        guard error == nil, let s = peripheral.services?.first(where: { $0.uuid.uuidString.uppercased() == IdealUUID.controlService }) else {
-            didFail("Servizio FFF0 assente: non è una centralina compatibile")
+        if let error { didFail("Lettura servizi: \(error.localizedDescription)"); return }
+        let services = peripheral.services ?? []
+        guard let s = services.first(where: { IdealUUID.normalize($0.uuid.uuidString) == IdealUUID.controlService }) else {
+            let found = services.map { $0.uuid.uuidString }.joined(separator: ", ")
+            didFail("Servizio FFF0 non trovato (servizi: \(found.isEmpty ? "nessuno" : found))")
             return
         }
         peripheral.discoverCharacteristics(nil, for: s)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        for c in service.characteristics ?? [] { chars[c.uuid.uuidString.uppercased()] = c }
+        for c in service.characteristics ?? [] { chars[IdealUUID.normalize(c.uuid.uuidString)] = c }
         guard chars[IdealUUID.command] != nil, chars[IdealUUID.notify] != nil else {
             didFail("Caratteristiche …9600/…9601 assenti")
             return
@@ -421,7 +424,7 @@ extension ControllerLink: CBPeripheralDelegate {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverDescriptorsFor characteristic: CBCharacteristic, error: Error?) {
-        for d in characteristic.descriptors ?? [] where d.uuid.uuidString.uppercased() == IdealUUID.userDescriptionDescriptor {
+        for d in characteristic.descriptors ?? [] where IdealUUID.normalize(d.uuid.uuidString) == IdealUUID.userDescriptionDescriptor {
             peripheral.readValue(for: d)
         }
     }
@@ -431,7 +434,7 @@ extension ControllerLink: CBPeripheralDelegate {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-        guard characteristic.uuid.uuidString.uppercased() == IdealUUID.notify else { return }
+        guard IdealUUID.normalize(characteristic.uuid.uuidString) == IdealUUID.notify else { return }
         if characteristic.isNotifying && state == .subscribing {
             stateTimer?.cancel()
             verify()
@@ -441,7 +444,7 @@ extension ControllerLink: CBPeripheralDelegate {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        guard error == nil, characteristic.uuid.uuidString.uppercased() == IdealUUID.notify else { return }
+        guard error == nil, IdealUUID.normalize(characteristic.uuid.uuidString) == IdealUUID.notify else { return }
         handle([UInt8](characteristic.value ?? Data()))
     }
 

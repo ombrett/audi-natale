@@ -28,6 +28,17 @@ enum IdealUUID {
     static let targetName = "ISP-B0717F"
     static let namePrefixes = ["ISP-", "IDL-"]
 
+    /// Forma canonica di un UUID BLE: i 16 bit standard tornano corti ("0000FFF0-0000-1000-8000-00805F9B34FB" → "FFF0").
+    /// iOS può presentare lo stesso servizio in entrambe le forme.
+    static func normalize(_ uuid: String) -> String {
+        let u = uuid.uppercased()
+        let base = "-0000-1000-8000-00805F9B34FB"
+        if u.count == 36, u.hasPrefix("0000"), u.hasSuffix(base) {
+            return String(u.dropFirst(4).prefix(4))
+        }
+        return u
+    }
+
     static func isIdealName(_ name: String?) -> Bool {
         guard let name else { return false }
         return namePrefixes.contains { name.hasPrefix($0) }
@@ -39,7 +50,7 @@ enum CharacteristicRole: String, CaseIterable {
     case command, notify, bulk, rhythm, otaWrite, otaNotify, unknownWrite, unknownWriteNotify, other
 
     static func of(_ uuid: String) -> CharacteristicRole {
-        switch uuid.uppercased() {
+        switch IdealUUID.normalize(uuid) {
         case IdealUUID.command: return .command
         case IdealUUID.notify: return .notify
         case IdealUUID.bulk: return .bulk

@@ -58,7 +58,7 @@ struct GATTServiceInfo: Identifiable, Equatable {
     var characteristics: [GATTCharacteristicInfo]
 
     var label: String {
-        switch uuid {
+        switch IdealUUID.normalize(uuid) {
         case IdealUUID.controlService: return "Controllo iDeal (FFF0)"
         case IdealUUID.otaService: return "OTA JieLi (AE00)"
         case IdealUUID.unknownService: return "Sconosciuto (FD00)"

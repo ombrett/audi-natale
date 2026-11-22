@@ -406,7 +406,7 @@ extension BLEManager: CBPeripheralDelegate {
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverDescriptorsFor characteristic: CBCharacteristic, error: Error?) {
-        for d in characteristic.descriptors ?? [] where d.uuid.uuidString.uppercased() == IdealUUID.userDescriptionDescriptor {
+        for d in characteristic.descriptors ?? [] where IdealUUID.normalize(d.uuid.uuidString) == IdealUUID.userDescriptionDescriptor {
             // Lettura (non scrittura) del descrittore 2901: su …9600 contiene il modello, es. "TR2411R003-07".
             peripheral.readValue(for: d)
         }

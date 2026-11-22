@@ -377,6 +377,12 @@ if let data = try? JSONEncoder().encode(prog), let back = try? JSONDecoder().dec
     check(back == prog, "programma effetti: salvataggio JSON")
 } else { check(false, "programma effetti: salvataggio JSON") }
 
+// MARK: UUID (bug 2.0: iOS presenta FFF0 nella forma lunga)
+check(IdealUUID.normalize("0000FFF0-0000-1000-8000-00805F9B34FB") == "FFF0", "uuid: forma lunga → corta")
+check(IdealUUID.normalize("fff0") == "FFF0", "uuid: minuscole")
+check(IdealUUID.normalize(IdealUUID.command) == IdealUUID.command, "uuid: 128 bit proprietario invariato")
+check(CharacteristicRole.of("0000AE01-0000-1000-8000-00805F9B34FB") == .otaWrite, "uuid: AE01 lunga resta bloccata")
+
 print("\n\(passed) superati, \(failures) falliti")
 if let dir = CommandLine.arguments.dropFirst().first {
     try? "\(passed) superati, \(failures) falliti\n".write(toFile: dir + "/logic-summary.txt", atomically: true, encoding: .utf8)
