@@ -20,6 +20,12 @@ struct EditorView: View {
     @EnvironmentObject var ble: BLEManager
     @EnvironmentObject var settings: AppSettings
     @EnvironmentObject var presets: PresetStore
+    @EnvironmentObject var maps: LEDMapStore
+
+    enum Layout: String, CaseIterable, Identifiable {
+        case grid = "Griglia", map = "Mappa"
+        var id: String { rawValue }
+    }
 
     @State private var pixels: [RGB] = []
     @State private var tool: Tool = .brush
@@ -32,6 +38,13 @@ struct EditorView: View {
     @State private var animation: DIYMode = .static
     @State private var animSpeed = 60.0
     @State private var askAnimation = false
+    @State private var layout: Layout = .grid
+    @State private var sectionID: UUID?
+    @State private var mapImage: UIImage?
+    @State private var textValue = ""
+    @State private var textSize = 0.45
+    @State private var textRotated = false
+    @State private var textClearsBackground = true
 
     private let columns = 20
 
@@ -47,6 +60,7 @@ struct EditorView: View {
                 }
                 canvasCard
                 toolsCard
+                if layout == .map && section != nil { textCard }
                 sendCard
             }
             .padding()
@@ -82,37 +96,108 @@ struct EditorView: View {
 
     // MARK: Tela
 
+    private var section: LEDMapSection? {
+        maps.sections.first { $0.id == sectionID } ?? maps.sections.first
+    }
+
     private var canvasCard: some View {
-        Card(title: "Striscia · \(pixels.count) indici", systemImage: "square.grid.4x3.fill") {
-            GeometryReader { geo in
-                let cell = geo.size.width / CGFloat(columns)
-                ZStack(alignment: .topLeading) {
-                    ForEach(pixels.indices, id: \.self) { i in
-                        let c = pixels[i]
-                        Circle()
-                            .fill(c == .black ? Theme.surfaceHigh : Color(rgb: c))
-                            .overlay(Circle().stroke(isSent(i) ? Color.clear : Theme.warning.opacity(0.7), lineWidth: 1))
-                            .shadow(color: c == .black ? .clear : Color(rgb: c).opacity(0.7), radius: 3)
-                            .frame(width: cell * 0.74, height: cell * 0.74)
-                            .position(x: (CGFloat(i % columns) + 0.5) * cell, y: (CGFloat(i / columns) + 0.5) * cell)
-                    }
+        Card(title: "Disegno · \(pixels.count) indici", systemImage: "square.grid.4x3.fill") {
+            if !maps.sections.isEmpty {
+                Picker("Vista", selection: $layout) {
+                    ForEach(Layout.allCases) { Text($0.rawValue).tag($0) }
                 }
-                .contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 0)
-                    .onChanged { v in paint(at: v.location, cell: cell) }
-                    .onEnded { _ in
-                        lastPainted = nil
-                        if live { sendDrawing() }
-                    })
+                .pickerStyle(.segmented)
             }
-            .aspectRatio(CGFloat(columns) / CGFloat(max(rows, 1)), contentMode: .fit)
+            TimelineView(.animation(minimumInterval: 1.0 / 20, paused: animation == .static)) { tl in
+                let level = MapPainter.previewLevel(mode: animation, speed: Int(animSpeed),
+                                                    time: tl.date.timeIntervalSinceReferenceDate)
+                if layout == .map, let s = section {
+                    mapCanvas(s, level: level)
+                } else {
+                    gridCanvas(level: level)
+                }
+            }
             HStack {
-                Text("Indice 0 in alto a sinistra, poi per righe da \(columns).")
+                Text(layout == .map ? "Tocca o trascina sui LED della mappa." : "Indice 0 in alto a sinistra, poi per righe da \(columns).")
                 Spacer()
                 if let i = lastPainted { Text("#\(i)").font(Theme.mono) }
             }
             .font(.caption2).foregroundStyle(Theme.textSecondary)
-            Text("Bordo arancione = diverso da quanto confermato dal controller.")
+            Text(animation == .static ? "Bordo arancione = diverso da quanto confermato dal controller."
+                                      : "Anteprima \(animation.label.lowercased()) indicativa: i tempi reali li decide la centralina.")
+                .font(.caption2).foregroundStyle(Theme.textSecondary)
+        }
+        .onChange(of: sectionID) { _ in loadMapImage() }
+        .onChange(of: layout) { _ in loadMapImage() }
+        .onAppear(perform: loadMapImage)
+    }
+
+    private func gridCanvas(level: Double) -> some View {
+        GeometryReader { geo in
+            let cell = geo.size.width / CGFloat(columns)
+            ZStack(alignment: .topLeading) {
+                ForEach(pixels.indices, id: \.self) { i in
+                    let c = pixels[i]
+                    Circle()
+                        .fill(c == .black ? Theme.surfaceHigh : Color(rgb: c).opacity(level))
+                        .overlay(Circle().stroke(isSent(i) ? Color.clear : Theme.warning.opacity(0.7), lineWidth: 1))
+                        .frame(width: cell * 0.74, height: cell * 0.74)
+                        .position(x: (CGFloat(i % columns) + 0.5) * cell, y: (CGFloat(i / columns) + 0.5) * cell)
+                }
+            }
+            .drawingGroup()
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { v in paint(at: v.location, cell: cell) }
+                .onEnded { _ in strokeEnded() })
+        }
+        .aspectRatio(CGFloat(columns) / CGFloat(max(rows, 1)), contentMode: .fit)
+    }
+
+    private func mapCanvas(_ s: LEDMapSection, level: Double) -> some View {
+        GeometryReader { geo in
+            ZStack {
+                if let img = mapImage {
+                    Image(uiImage: img).resizable().scaledToFit().opacity(0.25)
+                } else {
+                    Color.black
+                }
+                ForEach(s.points.filter { $0.index != nil }) { p in
+                    let i = p.index ?? 0
+                    let c = pixels.indices.contains(i) ? pixels[i] : .black
+                    Circle()
+                        .fill(c == .black ? Theme.surfaceHigh : Color(rgb: c).opacity(level))
+                        .frame(width: 9, height: 9)
+                        .position(x: p.x * geo.size.width, y: p.y * geo.size.height)
+                }
+            }
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 0)
+                .onChanged { v in paintMap(v.location, size: geo.size, section: s) }
+                .onEnded { _ in strokeEnded() })
+        }
+        .aspectRatio(s.aspect, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private var textCard: some View {
+        Card(title: "Testo sulla mappa", systemImage: "textformat") {
+            if maps.sections.count > 1 {
+                Picker("Sezione", selection: Binding(get: { section?.id }, set: { sectionID = $0 })) {
+                    ForEach(maps.sections) { Text($0.name).tag(Optional($0.id)) }
+                }
+            }
+            TextField("Testo", text: $textValue).textFieldStyle(.roundedBorder)
+            VStack(alignment: .leading) {
+                Text("Altezza: \(Int(textSize * 100))%").font(.subheadline)
+                Slider(value: $textSize, in: 0.1...0.9)
+            }
+            Toggle("Ruota di 90° (foto fatta in orizzontale)", isOn: $textRotated).font(.subheadline)
+            Toggle("Spegni i LED fuori dal testo", isOn: $textClearsBackground).font(.subheadline)
+            Button("Applica testo") { applyText() }
+                .buttonStyle(AccentButtonStyle(filled: false))
+                .enabled(!textValue.isEmpty && section != nil)
+            Text("Il testo è leggibile solo dove i LED mappati sono abbastanza fitti: con 10 LED/m su una linea si vedono soprattutto forme e lettere grandi.")
                 .font(.caption2).foregroundStyle(Theme.textSecondary)
         }
     }
@@ -264,6 +349,33 @@ struct EditorView: View {
         case .eraser: pixels[i] = .black
         case .fill: setAll(RGB(color))
         }
+    }
+
+    private func strokeEnded() {
+        lastPainted = nil
+        if live { sendDrawing() }
+    }
+
+    private func loadMapImage() {
+        mapImage = section.flatMap { maps.image(for: $0) }
+    }
+
+    private func paintMap(_ loc: CGPoint, size: CGSize, section s: LEDMapSection) {
+        if tool == .fill { setAll(RGB(color)); return }
+        guard let i = MapPainter.nearestIndex(points: s.points, x: Double(loc.x), y: Double(loc.y),
+                                              width: Double(size.width), height: Double(size.height), maxDistance: 24),
+              pixels.indices.contains(i) else { return }
+        lastPainted = i
+        pixels[i] = tool == .eraser ? .black : RGB(color)
+    }
+
+    private func applyText() {
+        guard let s = section,
+              let mask = TextMask(text: textValue, width: max(s.imageWidth, 1), height: max(s.imageHeight, 1),
+                                  heightFraction: textSize, rotated: textRotated) else { return }
+        pixels = MapPainter.apply(points: s.points, to: pixels, color: RGB(color),
+                                  background: textClearsBackground ? .black : nil) { x, y in mask.contains(x: x, y: y) }
+        if live { sendDrawing() }
     }
 
     private func setAll(_ c: RGB) {

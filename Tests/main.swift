@@ -160,6 +160,21 @@ check(level(try! IdealProtocol.effect(mode: 3, reversed: false, speed: 50, foreg
 check(try! IdealProtocol.diyPixel(index: 5, color: .red, brightness: 50, mode: 1, speed: 30)[8...9] == [0x01, 0x1E], "DOOD respiro velocità 30")
 check((try? IdealProtocol.diyPixel(index: 5, color: .red, brightness: 50, mode: 0, speed: 0)) == nil, "DOOD velocità 0 rifiutata")
 
+// MARK: Editor su mappa
+let mp: [MappedPoint] = [
+    MappedPoint(index: 0, x: 0.1, y: 0.5, confidence: 1, area: 4),
+    MappedPoint(index: 1, x: 0.5, y: 0.5, confidence: 1, area: 4),
+    MappedPoint(index: 1, x: 0.9, y: 0.9, confidence: 1, area: 4),   // seconda fila (Y)
+    MappedPoint(index: nil, x: 0.3, y: 0.3, confidence: 0, area: 4),
+]
+check(MapPainter.nearestIndex(points: mp, x: 52, y: 50, width: 100, height: 100, maxDistance: 10) == 1, "mappa: punto più vicino")
+check(MapPainter.nearestIndex(points: mp, x: 30, y: 30, width: 100, height: 100, maxDistance: 10) == nil, "mappa: punto senza indice ignorato")
+let masked = MapPainter.apply(points: mp, to: [RGB](repeating: .black, count: 3), color: .red, background: .blue) { x, _ in x > 0.8 }
+check(masked == [.blue, .red, .black], "mappa: maschera testo, Y basta una copia, non mappati intatti")
+check(MapPainter.previewLevel(mode: .flash, speed: 50, time: 0) == 1, "anteprima lampeggio acceso")
+check(MapPainter.previewLevel(mode: .static, speed: 50, time: 1.23) == 1, "anteprima fisso")
+check(MapPainter.previewPeriod(speed: 100) < MapPainter.previewPeriod(speed: 1), "anteprima: 100 più veloce")
+
 // MARK: Mappatura — codifica
 let plan200 = MappingPlan(ledCount: 200)
 check(plan200.bits == 8, "mappatura: 8 bit per 200 LED", "\(plan200.bits)")

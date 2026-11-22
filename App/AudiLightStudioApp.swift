@@ -9,6 +9,7 @@ struct AudiLightStudioApp: App {
     @StateObject private var ideal: IdealController
     @StateObject private var presets = PresetStore()
     @StateObject private var maps = LEDMapStore()
+    @StateObject private var sequence = SequencePlayer()
 
     init() {
         let settings = AppSettings()
@@ -43,6 +44,7 @@ struct AudiLightStudioApp: App {
                 .environmentObject(ideal)
                 .environmentObject(presets)
                 .environmentObject(maps)
+                .environmentObject(sequence)
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
         }

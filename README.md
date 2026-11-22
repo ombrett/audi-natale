@@ -11,7 +11,7 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 | 1 | Progetto SwiftUI, Bluetooth Lab, connessione, diagnostica, log, HEX, build CI | **Completata e provata** sull'auto il 22/11/2026 (build CI verde, 67 test). |
 | 2 | Protocollo verificato, primo pixel, più pixel, disegni | Primo pixel **verificato**. Editor 200 LED **verificato**: invio `DOOD` a finestra 6, ~72 comandi/s (disegno completo ≈ 3 s), 0 errori. `DOOT` in blocco disattivato finché non è catturato con MTU 23. |
 | 3 | Mappatura con fotocamera | Implementata: codici binari (18 fotogrammi), decodifica per pixel, filtro riflessi, mappe per sezione, correzione manuale. Prove sul pavimento (22/11): tratto disteso decodificato in ordine (0–30), groviglio non mappabile (LED sovrapposti). **Da provare con le strisce montate sull'auto.** |
-| 4 | Editor, animazioni, 1600 LED | Non iniziata (schermata segnaposto) |
+| 4 | Animazioni ed editor avanzato | Implementati: effetti centralina `SGLS` (0–9), scene `MULT` (0–11, max 6 colori con MTU 23), disegni DIY animati (respiro/lampeggio), editor sulla forma reale della mappa, testo rasterizzato sui LED mappati, anteprima, preset, sequenze di disegni con tempo reale. **Da provare sull'impianto.** Più centraline: non necessario con l'impianto attuale (una centralina, cablaggio a Y). |
 
 ### Cosa fa la build attuale
 
