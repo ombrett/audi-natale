@@ -377,6 +377,22 @@ if let data = try? JSONEncoder().encode(prog), let back = try? JSONDecoder().dec
     check(back == prog, "programma effetti: salvataggio JSON")
 } else { check(false, "programma effetti: salvataggio JSON") }
 
+// MARK: Forma dell'auto (modello provvisorio)
+check(abs(CarShape.topY(-0.5) - 1.415) < 0.02, "forma: tetto a 1,41 m")
+check(abs(CarShape.topY(2.015) - 0.62) < 0.01 && CarShape.topY(1.5) < 0.95, "forma: muso e cofano bassi")
+check(abs(CarShape.bottomY(CarShape.frontAxle) - (CarShape.wheelRadius + CarShape.archRadius)) < 0.01, "forma: passaruota sopra la ruota")
+check(CarShape.isCabin(-0.5) && !CarShape.isCabin(1.5), "forma: abitacolo e cofano")
+check(CarShape.stations.count > 50 && CarShape.halfSection(0).count == 12, "forma: sezioni")
+var maxW = 0.0
+for x in CarShape.stations { for p in CarShape.halfSection(x) { maxW = max(maxW, p.z) } }
+check(maxW <= CarDimensions.width / 2 + 0.01, "forma: larghezza entro 1,74 m", "\(maxW)")
+var monotoneOK = true
+for i in 0..<200 {
+    let x0 = -2.0 + Double(i) * 0.02
+    if abs(CarShape.topY(x0 + 0.02) - CarShape.topY(x0)) > 0.06 { monotoneOK = false }
+}
+check(monotoneOK, "forma: profilo senza salti")
+
 // MARK: UUID (bug 2.0: iOS presenta FFF0 nella forma lunga)
 check(IdealUUID.normalize("0000FFF0-0000-1000-8000-00805F9B34FB") == "FFF0", "uuid: forma lunga → corta")
 check(IdealUUID.normalize("fff0") == "FFF0", "uuid: minuscole")

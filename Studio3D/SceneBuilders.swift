@@ -36,67 +36,11 @@ enum LEDPointCloud {
     }
 }
 
-/// Modello dell'auto: provvisorio (forme semplici con le dimensioni dell'Audi A1 Sportback 2020)
-/// oppure un file USDZ/SCN importato dall'utente.
+/// Modello dell'auto: provvisorio (superficie ricostruita con le misure dell'Audi A1 Sportback 2020,
+/// vedi CarShape/CarMeshBuilder) oppure un file USDZ/SCN importato dall'utente.
 enum CarModelFactory {
     static func provisional(color: UIColor) -> SCNNode {
-        let root = SCNNode()
-        root.name = "car"
-        let L = CGFloat(CarDimensions.length), W = CGFloat(CarDimensions.width), H = CGFloat(CarDimensions.height)
-        let paint = SCNMaterial()
-        paint.name = "paint"
-        paint.lightingModel = .physicallyBased
-        paint.diffuse.contents = color
-        paint.metalness.contents = 0.6
-        paint.roughness.contents = 0.35
-        let glass = SCNMaterial()
-        glass.lightingModel = .physicallyBased
-        glass.diffuse.contents = UIColor(white: 0.05, alpha: 1)
-        glass.metalness.contents = 0.9
-        glass.roughness.contents = 0.1
-        let rubber = SCNMaterial()
-        rubber.diffuse.contents = UIColor(white: 0.08, alpha: 1)
-
-        let lower = SCNBox(width: L, height: H * 0.47, length: W, chamferRadius: 0.18)
-        lower.materials = [paint]
-        let lowerNode = SCNNode(geometry: lower)
-        lowerNode.position = SCNVector3(0, Float(0.18 + H * 0.47 / 2), 0)
-        root.addChildNode(lowerNode)
-
-        let cabin = SCNBox(width: L * 0.56, height: H * 0.36, length: W * 0.86, chamferRadius: 0.22)
-        cabin.materials = [glass]
-        let cabinNode = SCNNode(geometry: cabin)
-        cabinNode.position = SCNVector3(Float(-L * 0.06), Float(0.18 + H * 0.47 + H * 0.36 / 2 - 0.04), 0)
-        root.addChildNode(cabinNode)
-
-        let roof = SCNBox(width: L * 0.5, height: 0.04, length: W * 0.8, chamferRadius: 0.02)
-        roof.materials = [paint]
-        let roofNode = SCNNode(geometry: roof)
-        roofNode.position = SCNVector3(Float(-L * 0.07), Float(H - 0.02), 0)
-        root.addChildNode(roofNode)
-
-        for (x, z) in [(1.28, 0.76), (1.28, -0.76), (-1.28, 0.76), (-1.28, -0.76)] {
-            let tyre = SCNCylinder(radius: 0.32, height: 0.22)
-            tyre.materials = [rubber]
-            let n = SCNNode(geometry: tyre)
-            n.eulerAngles = SCNVector3(Float.pi / 2, 0, 0)
-            n.position = SCNVector3(Float(x), 0.32, Float(z))
-            root.addChildNode(n)
-        }
-        // Fari e luci posteriori stilizzati per riconoscere il verso.
-        for (x, c) in [(Float(L / 2) + 0.005, UIColor.white), (-Float(L / 2) - 0.005, UIColor.red)] {
-            for z: Float in [0.55, -0.55] {
-                let lamp = SCNBox(width: 0.02, height: 0.08, length: 0.32, chamferRadius: 0.01)
-                let m = SCNMaterial()
-                m.emission.contents = c
-                m.diffuse.contents = c
-                lamp.materials = [m]
-                let n = SCNNode(geometry: lamp)
-                n.position = SCNVector3(x, 0.75, z)
-                root.addChildNode(n)
-            }
-        }
-        return root
+        CarMeshBuilder.makeCar(color: color)
     }
 
     /// Carica un modello importato, lo porta a lunghezza 4,03 m, centrato e appoggiato a terra.

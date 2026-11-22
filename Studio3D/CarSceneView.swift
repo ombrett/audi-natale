@@ -76,17 +76,23 @@ struct CarSceneView: UIViewRepresentable {
             cameraNode.camera = cam
             scene.rootNode.addChildNode(cameraNode)
 
+            scene.lightingEnvironment.contents = CarMeshBuilder.environmentImage()
+            scene.lightingEnvironment.intensity = 1.2
             let floor = SCNFloor()
-            floor.reflectivity = 0.08
+            floor.reflectivity = 0.12
+            floor.reflectionFalloffEnd = 2.5
             let fm = SCNMaterial()
-            fm.diffuse.contents = UIColor(white: 0.06, alpha: 1)
+            fm.lightingModel = .physicallyBased
+            fm.diffuse.contents = UIColor(white: 0.035, alpha: 1)
+            fm.roughness.contents = 0.6
             floor.materials = [fm]
             scene.rootNode.addChildNode(SCNNode(geometry: floor))
 
-            let key = SCNLight(); key.type = .directional; key.intensity = 900; key.castsShadow = true
+            let key = SCNLight(); key.type = .directional; key.intensity = 1100; key.castsShadow = true
+            key.shadowMode = .deferred; key.shadowSampleCount = 8; key.shadowRadius = 6; key.shadowColor = UIColor(white: 0, alpha: 0.6)
             let keyNode = SCNNode(); keyNode.light = key; keyNode.eulerAngles = SCNVector3(-Float.pi / 3, Float.pi / 5, 0)
             scene.rootNode.addChildNode(keyNode)
-            let amb = SCNLight(); amb.type = .ambient; amb.intensity = 350
+            let amb = SCNLight(); amb.type = .ambient; amb.intensity = 150
             let ambNode = SCNNode(); ambNode.light = amb
             scene.rootNode.addChildNode(ambNode)
 

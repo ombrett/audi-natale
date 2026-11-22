@@ -155,30 +155,94 @@ final class EffectLibrary: ObservableObject {
     }
 }
 
-/// Disposizione dimostrativa per provare l'interfaccia prima della scansione.
-/// Ogni centralina occupa un tratto della fiancata, con la copia a Y sul lato opposto.
+/// Disposizione dimostrativa per provare l'interfaccia prima della scansione, ispirata allo schema
+/// "4 pacchi da 2 × 20 m": ogni centralina riempie una zona con un percorso a zig-zag; le due file a Y
+/// di ogni pacco stanno sulle due metà simmetriche (sinistra/destra). Sempre etichettata come dimostrativa.
 enum DemoLayout {
+    enum Region: CaseIterable { case roof, hood, sides, rear, sills }
+
     static func make(controllers: [ControllerConfig]) -> CarMap {
         let list = controllers.filter { $0.enabled }.sorted { $0.order < $1.order }
-        let n = max(list.count, 1)
         var leds: [PhysicalLED] = []
-        let halfL = CarDimensions.length / 2 - 0.1
         for (k, c) in list.enumerated() {
+            let region = Region.allCases[k % Region.allCases.count]
             let count = min(c.ledCount, IdealProtocol.maxSafeLEDs)
-            for i in 0..<count {
-                let s = (Double(k) + Double(i) / Double(max(count, 1))) / Double(n)
-                let x = halfL - s * 2 * halfL
-                let y = 0.42 + 0.05 * sin(s * .pi * 2)
-                let z = CarDimensions.width / 2 + 0.02
-                leds.append(PhysicalLED(key: LEDKey(controller: c.id, pixel: i), world: SIMD3(x, y, z), confidence: 1, views: 0))
+            let path = resample(rows(region), count: count)
+            for (i, p) in path.enumerated() {
+                let key = LEDKey(controller: c.id, pixel: i)
+                leds.append(PhysicalLED(key: key, world: p, confidence: 1, views: 0))
                 if c.copiesPerPixel > 1 {
-                    leds.append(PhysicalLED(key: LEDKey(controller: c.id, pixel: i), world: SIMD3(x, y, -z), confidence: 1, views: 0))
+                    leds.append(PhysicalLED(key: key, world: SIMD3(p.x, p.y, -p.z), confidence: 1, views: 0))
                 }
             }
         }
         var map = CarMap(name: "Mappa dimostrativa", leds: leds)
         map.isDemo = true
         return map
+    }
+
+    /// Righe del zig-zag sulla metà sinistra (z > 0) della zona.
+    static func rows(_ r: Region) -> [[SIMD3<Double>]] {
+        func line(_ n: Int, _ f: (Double) -> SIMD3<Double>) -> [SIMD3<Double>] { (0...n).map { f(Double($0) / Double(n)) } }
+        switch r {
+        case .roof:
+            return stride(from: -1.60, through: 0.05, by: 0.11).map { x in
+                line(10) { t in let z = 0.06 + t * 0.48; return SIMD3(x, CarShape.topSurfaceY(x: x, z: z) + 0.01, z) }
+            }
+        case .hood:
+            return stride(from: 1.05, through: 1.85, by: 0.08).map { x in
+                line(10) { t in
+                    let w = CarShape.hoodHalfWidth * CarShape.taper(x) * 0.92
+                    let z = 0.06 + t * (w - 0.06)
+                    return SIMD3(x, CarShape.topSurfaceY(x: x, z: z) + 0.01, z)
+                }
+            }
+        case .sides:
+            return stride(from: 0.42, through: 0.86, by: 0.065).map { y in
+                line(24) { t in
+                    let x = -1.40 + t * 2.20
+                    let yy = min(y, CarShape.beltY(x) - 0.04)
+                    return SIMD3(x, yy, CarShape.halfWidth(x: x, y: yy) + 0.012)
+                }
+            }
+        case .rear:
+            return stride(from: 0.45, through: 1.25, by: 0.07).map { y in
+                line(10) { t in let z = 0.05 + t * 0.62; return SIMD3(rearSurfaceX(y) - 0.012, y, min(z, CarShape.halfWidth(x: rearSurfaceX(y), y: y) * 0.95)) }
+            }
+        case .sills:
+            return [line(30) { t in
+                let x = -1.75 + t * 3.5
+                let y = max(CarShape.bottomY(x), 0.28) + 0.04
+                return SIMD3(x, y, CarShape.halfWidth(x: x, y: y) + 0.012)
+            }]
+        }
+    }
+
+    /// Punto più arretrato della carrozzeria all'altezza y (portellone e paraurti posteriore).
+    static func rearSurfaceX(_ y: Double) -> Double {
+        var x = -CarShape.halfLength
+        while x < -1.4 && CarShape.topY(x) < y { x += 0.005 }
+        return x
+    }
+
+    /// Unisce le righe a serpentina e distribuisce `count` punti a distanza uguale lungo il percorso.
+    static func resample(_ rows: [[SIMD3<Double>]], count: Int) -> [SIMD3<Double>] {
+        var path: [SIMD3<Double>] = []
+        for (i, r) in rows.enumerated() { path += i % 2 == 0 ? r : r.reversed() }
+        guard path.count > 1, count > 0 else { return Array(path.prefix(count)) }
+        var cum: [Double] = [0]
+        for i in 1..<path.count { cum.append(cum[i - 1] + simd_distance(path[i - 1], path[i])) }
+        let total = cum.last ?? 0
+        var out: [SIMD3<Double>] = []
+        var j = 1
+        for k in 0..<count {
+            let target = count == 1 ? 0 : total * Double(k) / Double(count - 1)
+            while j < path.count - 1 && cum[j] < target { j += 1 }
+            let seg = max(cum[j] - cum[j - 1], 1e-9)
+            let t = min(max((target - cum[j - 1]) / seg, 0), 1)
+            out.append(path[j - 1] + (path[j] - path[j - 1]) * t)
+        }
+        return out
     }
 }
 
