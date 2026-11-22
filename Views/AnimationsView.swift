@@ -201,6 +201,8 @@ struct AnimationsView: View {
         sequence.stop()
         let sp = Int(self.speed), br = Int(self.brightness)
         switch kind {
+        case .sequence:
+            break
         case .twoColor:
             let mode = sglsMode
             let fg = RGB(foreground), bg = RGB(background)
