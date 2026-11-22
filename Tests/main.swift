@@ -1,4 +1,5 @@
 import Foundation
+import simd
 
 // Test della logica di protocollo, eseguiti su macOS in GitHub Actions:
 //   swiftc -O -o logictests Logic/*.swift Tests/main.swift && ./logictests
@@ -274,6 +275,107 @@ var reflFrames: [MappingPlan.Frame: GrayImage] = [:]
 for f in plan4.frames { reflFrames[f] = renderReflect(f) }
 let reflPts = MappingDecoder.decode(plan: plan4, frames: reflFrames).filter { $0.index == 1 }
 check(reflPts.count == 2, "mappatura: riflesso debole scartato", "\(reflPts.count)")
+
+// MARK: Identità LED e multicentralina
+let cA = ControllerConfig(name: "A", bleName: "ISP-A", ledCount: 200, order: 0)
+let cB = ControllerConfig(name: "B", bleName: "ISP-B", ledCount: 400, order: 1)
+let cC = ControllerConfig(name: "C", bleName: "ISP-C", ledCount: 500, order: 2)   // oltre 400: limitato
+let cD = ControllerConfig(name: "D", bleName: "ISP-D", ledCount: 600, order: 3, enabled: false)
+let book = Codebook(controllers: [cC, cA, cB, cD])
+check(book.total == 200 + 400 + 400, "codebook: totale con limite 400 e centralina disattivata", "\(book.total)")
+check(book.plan.bits == 10, "codebook: 10 bit per 1000 LED", "\(book.plan.bits)")
+check(book.globalIndex(LEDKey(controller: cB.id, pixel: 0)) == 200, "codebook: offset seconda centralina")
+check(book.globalIndex(LEDKey(controller: cA.id, pixel: 200)) == nil, "codebook: pixel fuori range")
+var roundTrip = true
+for g in stride(from: 0, to: book.total, by: 37) {
+    guard let k = book.key(forGlobal: g), book.globalIndex(k) == g else { roundTrip = false; break }
+}
+check(roundTrip, "codebook: andata e ritorno indici globali")
+let t1 = book.targets(for: .bit(0, inverted: false), on: .green)
+check(t1[cA.id]?.count == 200 && t1[cB.id]?.count == 400 && t1[cD.id] == nil, "codebook: disegni per centralina")
+check(book.plan.isOn(index: book.globalIndex(LEDKey(controller: cB.id, pixel: 5))!, in: .bit(0, inverted: false)) == (t1[cB.id]![5] == .green), "codebook: fotogramma coerente con i codici globali")
+let split = FrameSplitter.split([LEDKey(controller: cA.id, pixel: 3): .red], controllers: [cA, cB])
+check(split[cA.id]?[3] == .red && split[cA.id]?[4] == .black && split[cB.id]?.count == 400, "split: colori per centralina")
+let book1600 = Codebook(controllers: (0..<4).map { ControllerConfig(name: "C\($0)", bleName: "ISP-\($0)", ledCount: 400, order: $0) })
+check(book1600.total == 1600 && book1600.plan.bits == 11 && book1600.plan.frames.count == 24, "codebook: 4×400 = 1600 LED, 11 bit, 24 fotogrammi")
+
+// MARK: Geometria 3D
+let target3 = SIMD3<Double>(1.0, 0.5, -2.0)
+let camA = SIMD3<Double>(0, 0, 0), camB = SIMD3<Double>(2, 0, 0), camC = SIMD3<Double>(0, 1.5, 1)
+let rA = Ray(origin: camA, direction: target3 - camA), rB = Ray(origin: camB, direction: target3 - camB)
+if let cp = Triangulation.closestPoint(rA, rB) {
+    check(simd_distance(cp.point, target3) < 1e-6 && cp.gap < 1e-6, "triangolazione: due raggi")
+} else { check(false, "triangolazione: due raggi") }
+let ls = Triangulation.leastSquares([rA, rB, Ray(origin: camC, direction: target3 - camC)])
+check(ls.map { simd_distance($0, target3) < 1e-6 } == true, "triangolazione: minimi quadrati")
+check(Triangulation.closestPoint(rA, Ray(origin: camB, direction: rA.direction)) == nil, "triangolazione: raggi paralleli")
+// Pixel a Y: due LED fisici, visti da 3 viste; più un punto da profondità
+let keyY = LEDKey(controller: cA.id, pixel: 7)
+let pL = SIMD3<Double>(1.5, 0.6, 0.85), pR = SIMD3<Double>(1.5, 0.6, -0.85)
+let cams: [SIMD3<Double>] = [SIMD3(4, 1.2, 0), SIMD3(3, 1.2, 3), SIMD3(3, 1.2, -3)]
+var obsY: [LEDObservation] = []
+for (v, cam) in cams.enumerated() {
+    obsY.append(LEDObservation(key: keyY, view: v, point: nil, ray: Ray(origin: cam, direction: pL - cam)))
+    obsY.append(LEDObservation(key: keyY, view: v, point: nil, ray: Ray(origin: cam, direction: pR - cam)))
+}
+let recY = LEDReconstructor.reconstruct(obsY, maxCopies: 2)
+check(recY.count == 2, "ricostruzione: due posizioni per un pixel a Y", "\(recY.count)")
+check(recY.contains { simd_distance($0.position, pL) < 0.02 } && recY.contains { simd_distance($0.position, pR) < 0.02 }, "ricostruzione: posizioni corrette",
+      "\(recY.map { $0.position })")
+let recDepth = LEDReconstructor.reconstruct([LEDObservation(key: keyY, view: 0, point: pL, ray: nil)], maxCopies: 2)
+check(recDepth.count == 1 && recDepth[0].views == 1, "ricostruzione: un punto di profondità basta")
+let recOneRay = LEDReconstructor.reconstruct([LEDObservation(key: keyY, view: 0, point: nil, ray: rA)], maxCopies: 2)
+check(recOneRay.isEmpty, "ricostruzione: un solo raggio non basta")
+// Allineamento: nuvola lungo una direzione a 30° → asse x dell'auto
+let ang = 30.0 * Double.pi / 180
+let cloud = (0..<50).map { i -> SIMD3<Double> in
+    let s = Double(i) / 49 * 4 - 2
+    return SIMD3(5 + s * cos(ang), 1 + 0.1 * Double(i % 3), 2 + s * sin(ang))
+}
+let al = AutoAlign.fit(cloud)
+let alongX = cloud.map { al.toCar($0) }
+check(alongX.allSatisfy { abs($0.z) < 0.01 }, "allineamento: asse principale su x", "\(alongX.map { $0.z }.max() ?? 0)")
+check(ZoneClassifier.zone(of: SIMD3(1.9, 0.6, 0)) == .front && ZoneClassifier.zone(of: SIMD3(-1.9, 0.6, 0)) == .rear
+      && ZoneClassifier.zone(of: SIMD3(0, 0.6, 0.8)) == .left && ZoneClassifier.zone(of: SIMD3(0, 0.6, -0.8)) == .right
+      && ZoneClassifier.zone(of: SIMD3(0, 1.3, 0)) == .roof, "zone dell'auto")
+
+// MARK: Motore effetti
+let ctrl = UUID()
+var effPts: [EffectPoint] = (0..<40).map { EffectPoint(key: LEDKey(controller: ctrl, pixel: $0), position: SIMD3(-2 + Double($0) * 0.1, 0.5, 0.8)) }
+effPts.append(EffectPoint(key: LEDKey(controller: ctrl, pixel: 20), position: SIMD3(1.9, 0.5, -0.8)))   // copia a Y del pixel 20 (frontale)
+let ctx = EffectContext(points: effPts)
+var solidP = EffectParams(); solidP.kind = .solid; solidP.colors = [.red]; solidP.intensity = 1
+let solidOut = EffectEngine.render(EffectProgram(name: "s", layers: [EffectLayer(params: solidP)]), context: ctx, time: 3)
+check(solidOut.count == 40 && solidOut.values.allSatisfy { $0 == .red }, "effetti: statico, un colore per pixel logico")
+var scanP = EffectParams(); scanP.kind = .scanFrontBack; scanP.colors = [.red, .black]; scanP.intensity = 1; scanP.speed = 0.5; scanP.width = 0.1
+let s0 = EffectEngine.render(EffectProgram(name: "scan", layers: [EffectLayer(params: scanP)]), context: ctx, time: 0.5)
+let s1 = EffectEngine.render(EffectProgram(name: "scan", layers: [EffectLayer(params: scanP)]), context: ctx, time: 1.2)
+func brightestPixel(_ m: [LEDKey: RGB]) -> Int { m.max { $0.value.r < $1.value.r }!.key.pixel }
+check(brightestPixel(s1) > brightestPixel(s0), "effetti: la scansione avanza lungo l'asse", "\(brightestPixel(s0)) → \(brightestPixel(s1))")
+check(EffectEngine.render(EffectProgram(name: "scan", layers: [EffectLayer(params: scanP)]), context: ctx, time: 0.5) == s0, "effetti: deterministico")
+var rb = EffectParams(); rb.kind = .rainbow; rb.intensity = 1
+let rbOut = EffectEngine.render(EffectProgram(name: "rb", layers: [EffectLayer(params: rb)]), context: ctx, time: 0)
+check(Set(rbOut.values).count > 10, "effetti: arcobaleno varia nello spazio")
+// Pixel 20 a Y: una copia sul lato sinistro (rosso), una sul frontale (blu) → media
+var leftRed = EffectParams(); leftRed.kind = .solid; leftRed.colors = [.red]; leftRed.intensity = 1
+var rightBlue = EffectParams(); rightBlue.kind = .solid; rightBlue.colors = [.blue]; rightBlue.intensity = 1
+let zoned = EffectEngine.render(EffectProgram(name: "z", layers: [EffectLayer(zone: .left, params: leftRed), EffectLayer(zone: .front, params: rightBlue)]), context: ctx, time: 0)
+check(zoned[LEDKey(controller: ctrl, pixel: 20)] == RGB(r: 128, g: 0, b: 128), "effetti: pixel a Y con zone diverse = colore medio",
+      "\(String(describing: zoned[LEDKey(controller: ctrl, pixel: 20)]))")
+check(zoned[LEDKey(controller: ctrl, pixel: 10)] == .red, "effetti: livello per zona")
+var prog = EffectProgram(name: "p", layers: [EffectLayer(params: solidP)])
+prog.paint[LEDKey(controller: ctrl, pixel: 5)] = .green
+check(EffectEngine.render(prog, context: ctx, time: 0)[LEDKey(controller: ctrl, pixel: 5)] == .green, "effetti: pittura sopra i livelli")
+var po = EffectParams(); po.kind = .powerOn; po.colors = [.red]; po.intensity = 1; po.speed = 1
+let poStart = EffectEngine.render(EffectProgram(name: "po", layers: [EffectLayer(params: po)]), context: ctx, time: 0)
+let poEnd = EffectEngine.render(EffectProgram(name: "po", layers: [EffectLayer(params: po)]), context: ctx, time: 2)
+check(poStart.values.filter { $0 != .black }.count < 5 && poEnd.values.allSatisfy { $0 == .red || $0.r > 200 }, "effetti: accensione progressiva")
+let grad = EffectEngine.gradient(keys: Set((1..<40).map { LEDKey(controller: ctrl, pixel: $0) }), context: ctx, axis: .frontBack, from: .red, to: .blue)
+check(grad[LEDKey(controller: ctrl, pixel: 1)] == .red && grad[LEDKey(controller: ctrl, pixel: 39)] == .blue, "gradiente lungo l'asse")
+check(EffectEngine.hsv(0, 1, 1) == .red && EffectEngine.hsv(2.0 / 3.0, 1, 1) == .blue, "hsv")
+if let data = try? JSONEncoder().encode(prog), let back = try? JSONDecoder().decode(EffectProgram.self, from: data) {
+    check(back == prog, "programma effetti: salvataggio JSON")
+} else { check(false, "programma effetti: salvataggio JSON") }
 
 print("\n\(passed) superati, \(failures) falliti")
 if let dir = CommandLine.arguments.dropFirst().first {
