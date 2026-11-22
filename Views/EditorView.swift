@@ -145,6 +145,10 @@ struct EditorView: View {
                     .font(.caption).foregroundStyle(Theme.warning)
             }
             Toggle("Live: invia a ogni tratto", isOn: $live).font(.subheadline)
+            Stepper("Finestra di invio: \(settings.sendWindow)", value: $settings.sendWindow, in: 1...8)
+                .font(.subheadline)
+            Text("Comandi mandati prima di aspettare le conferme. 1 = il più sicuro; prova 4, poi 6–8 se non ci sono ritentativi.")
+                .font(.caption2).foregroundStyle(Theme.textSecondary)
             HStack(spacing: 10) {
                 Button {
                     sendDrawing()
@@ -172,7 +176,7 @@ struct EditorView: View {
             Button("Esci da DIY mantenendo il disegno") { ideal.exitDIY(keepDrawing: true) }
                 .buttonStyle(AccentButtonStyle(filled: false))
                 .enabled(ideal.diyActive && ideal.transfer?.isRunning != true)
-            Text("Usa solo DOOD verificato (un comando per pixel o riempimento, ognuno confermato). L'invio in blocco DOOT resta disattivato finché non è catturato con MTU 23.")
+            Text("Usa solo DOOD verificato (un comando per pixel o riempimento, ognuno confermato da DOODOK). L'invio in blocco DOOT resta disattivato finché non è catturato con MTU 23.")
                 .font(.caption2).foregroundStyle(Theme.textSecondary)
         }
     }

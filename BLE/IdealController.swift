@@ -45,8 +45,9 @@ final class IdealController: ObservableObject {
     @Published private(set) var canvas: [RGB]?
 
     private var opQueue: [PixelOp] = []
-    private var inFlight: PixelOp?
-    private var inFlightRetried = false
+    private var batch: [PixelOp] = []
+    private var batchAcks = 0
+    private var batchRetried = false
     private var opTimeout: DispatchWorkItem?
     private var queuedTarget: [RGB]?
 
@@ -233,7 +234,7 @@ final class IdealController: ObservableObject {
         opQueue = []
         queuedTarget = nil
         opTimeout?.cancel()
-        inFlight = nil
+        batch = []
         if transfer?.isRunning == true {
             transfer?.error = "Annullato"
             canvas = nil   // alcuni pixel potrebbero essere stati applicati senza conferma
@@ -251,7 +252,7 @@ final class IdealController: ObservableObject {
         if current == nil { canvas = [RGB](repeating: .black, count: target.count) }
         opQueue = ops
         transfer = Transfer(total: ops.count, done: 0, startedAt: Date(), retries: 0, finishedAt: nil, error: nil)
-        sendNextOp()
+        sendNextBatch()
     }
 
     private func packet(for op: PixelOp) throws -> [UInt8] {
@@ -262,63 +263,72 @@ final class IdealController: ObservableObject {
         }
     }
 
-    private func sendNextOp() {
+    /// Invio a finestra: fino a `sendWindow` DOOD consecutivi senza attendere, poi si aspetta un
+    /// DOODOK per ciascuno. Se ne mancano, l'intero gruppo viene rimandato (DOOD è idempotente e
+    /// l'ordine del gruppo è preservato). Finestra 1 = un comando, una conferma.
+    private func sendNextBatch() {
         guard !opQueue.isEmpty else { finishTransfer(); return }
-        let op = opQueue.removeFirst()
-        inFlight = op
-        inFlightRetried = false
-        transmit(op)
+        let n = min(max(settings.sendWindow, 1), 8, opQueue.count)
+        batch = Array(opQueue.prefix(n))
+        opQueue.removeFirst(n)
+        batchRetried = false
+        transmitBatch()
     }
 
-    private func transmit(_ op: PixelOp) {
-        let plain: [UInt8]
-        do { plain = try packet(for: op) } catch {
-            failTransfer("\(error)")
-            return
-        }
-        let label: String
-        switch op {
-        case .fill(let c): label = "DOOD riempi \(Hex.string([c.r, c.g, c.b], separator: ""))"
-        case .pixel(let i, let c): label = "DOOD #\(i) \(Hex.string([c.r, c.g, c.b], separator: ""))"
-        }
-        if let err = send(plain, label: label, expect: nil) {
-            failTransfer(err)
-            return
+    private func transmitBatch() {
+        batchAcks = 0
+        for op in batch {
+            let plain: [UInt8]
+            do { plain = try packet(for: op) } catch {
+                failTransfer("\(error)")
+                return
+            }
+            let label: String
+            switch op {
+            case .fill(let c): label = "DOOD riempi \(Hex.string([c.r, c.g, c.b], separator: ""))"
+            case .pixel(let i, let c): label = "DOOD #\(i) \(Hex.string([c.r, c.g, c.b], separator: ""))"
+            }
+            if let err = send(plain, label: label, expect: nil) {
+                failTransfer(err)
+                return
+            }
         }
         opTimeout?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.opTimedOut() }
+        let work = DispatchWorkItem { [weak self] in self?.batchTimedOut() }
         opTimeout = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0 + 0.15 * Double(batch.count), execute: work)
     }
 
     private func opAcked() {
+        guard !batch.isEmpty else { return }
+        batchAcks += 1
+        guard batchAcks >= batch.count else { return }
         opTimeout?.cancel()
-        guard let op = inFlight else { return }
         if var c = canvas {
-            PixelPlanner.apply(op, to: &c)
+            for op in batch { PixelPlanner.apply(op, to: &c) }
             canvas = c
         }
-        inFlight = nil
-        transfer?.done += 1
-        sendNextOp()
+        transfer?.done += batch.count
+        batch = []
+        sendNextBatch()
     }
 
-    private func opTimedOut() {
-        guard let op = inFlight else { return }
-        if !inFlightRetried {
-            inFlightRetried = true
+    private func batchTimedOut() {
+        guard !batch.isEmpty else { return }
+        if !batchRetried {
+            batchRetried = true
             transfer?.retries += 1
-            log.add(.event, IdealUUID.notify, "Nessun DOODOK entro 1 s: ritento una volta")
-            transmit(op)
+            log.add(.event, IdealUUID.notify, "Ricevuti \(batchAcks)/\(batch.count) DOODOK: rimando il gruppo")
+            transmitBatch()
         } else {
-            failTransfer("Nessuna conferma DOODOK dopo un nuovo tentativo")
+            failTransfer("Conferme DOODOK mancanti anche dopo il nuovo invio (\(batchAcks)/\(batch.count))")
         }
     }
 
     private func failTransfer(_ reason: String) {
         opTimeout?.cancel()
         opQueue = []
-        inFlight = nil
+        batch = []
         canvas = nil
         transfer?.error = reason
         lastResult = "Invio interrotto: \(reason)"
@@ -330,7 +340,10 @@ final class IdealController: ObservableObject {
         if let t = transfer {
             let rate = t.opsPerSecond.map { String(format: "%.1f", $0) } ?? "-"
             lastResult = "Disegno applicato: \(t.done) comandi, \(rate) cmd/s"
-            log.add(.event, nil, "Disegno applicato: \(t.done) comandi, \(rate) cmd/s, ritentativi \(t.retries)")
+            log.add(.event, nil, "Disegno applicato: \(t.done) comandi, \(rate) cmd/s, finestra \(settings.sendWindow), ritentativi \(t.retries)")
+            // Con ritentativi una conferma tardiva può essere stata contata nel gruppo sbagliato:
+            // al prossimo invio si ridisegna tutto da zero.
+            if t.retries > 0 { canvas = nil }
         }
         if let next = queuedTarget {
             queuedTarget = nil
@@ -361,7 +374,7 @@ final class IdealController: ObservableObject {
     }
 
     private func confirm(_ tag: String) {
-        if tag == "DOOD", inFlight != nil {
+        if tag == "DOOD", !batch.isEmpty {
             opAcked()
         }
         if !sessionAcks.contains(tag) { sessionAcks.append(tag) }
@@ -382,7 +395,7 @@ final class IdealController: ObservableObject {
         ackTimeout?.cancel()
         if transfer?.isRunning == true { transfer?.error = "Disconnesso durante l'invio" }
         opQueue = []
-        inFlight = nil
+        batch = []
         queuedTarget = nil
         opTimeout?.cancel()
         canvas = nil

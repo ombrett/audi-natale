@@ -12,6 +12,8 @@ final class AppSettings: ObservableObject {
     @Published var diyBrightness: Int { didSet { defaults.set(diyBrightness, forKey: Keys.diyBrightness) } }
     /// LED configurati sul controller collegato (limite di sicurezza: 400).
     @Published var ledCount: Int { didSet { defaults.set(ledCount, forKey: Keys.ledCount) } }
+    /// Comandi DOOD inviati prima di attendere le conferme (1 = uno alla volta).
+    @Published var sendWindow: Int { didSet { defaults.set(sendWindow, forKey: Keys.sendWindow) } }
     @Published var lastPeripheralID: String? { didSet { defaults.set(lastPeripheralID, forKey: Keys.lastPeripheral) } }
 
     enum Keys {
@@ -22,6 +24,7 @@ final class AppSettings: ObservableObject {
         static let diyBrightness = "diyBrightness"
         static let ledCount = "ledCount"
         static let lastPeripheral = "lastPeripheralID"
+        static let sendWindow = "sendWindow"
         static let confirmedPrefix = "confirmedTags."
     }
 
@@ -36,6 +39,7 @@ final class AppSettings: ObservableObject {
         let storedCount = defaults.object(forKey: Keys.ledCount) as? Int ?? 200
         ledCount = min(max(storedCount, 1), IdealProtocol.maxSafeLEDs)
         lastPeripheralID = defaults.string(forKey: Keys.lastPeripheral)
+        sendWindow = min(max(defaults.object(forKey: Keys.sendWindow) as? Int ?? 4, 1), 8)
     }
 
     /// Tag a cui un controller specifico ha risposto con un ack ("…OK"): verificati sul dispositivo.
