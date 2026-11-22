@@ -32,7 +32,8 @@ final class AppSettings: ObservableObject {
         autoReconnect = defaults.object(forKey: Keys.autoReconnect) as? Bool ?? true
         settleSeconds = defaults.object(forKey: Keys.settle) as? Double ?? 3
         diyBrightness = defaults.object(forKey: Keys.diyBrightness) as? Int ?? 50
-        let storedCount = defaults.object(forKey: Keys.ledCount) as? Int ?? IdealProtocol.maxSafeLEDs
+        // Default 200: impianto verificato (2 file da 200 LED in parallelo a Y sulla stessa linea dati).
+        let storedCount = defaults.object(forKey: Keys.ledCount) as? Int ?? 200
         ledCount = min(max(storedCount, 1), IdealProtocol.maxSafeLEDs)
         lastPeripheralID = defaults.string(forKey: Keys.lastPeripheral)
     }

@@ -23,6 +23,33 @@ final class IdealController: ObservableObject {
     @Published private(set) var diyActive = false
     @Published private(set) var pending: PendingAck?
 
+    /// Avanzamento di un invio di più pixel (DOOD con attesa di ogni DOODOK).
+    struct Transfer: Equatable {
+        var total: Int
+        var done: Int
+        var startedAt: Date
+        var retries: Int
+        var finishedAt: Date?
+        var error: String?
+
+        var opsPerSecond: Double? {
+            let end = finishedAt ?? Date()
+            let t = end.timeIntervalSince(startedAt)
+            return t > 0 && done > 0 ? Double(done) / t : nil
+        }
+        var isRunning: Bool { finishedAt == nil && error == nil }
+    }
+
+    @Published private(set) var transfer: Transfer?
+    /// Stato della tela DIY noto all'app (nil = sconosciuto, es. dopo una riconnessione).
+    @Published private(set) var canvas: [RGB]?
+
+    private var opQueue: [PixelOp] = []
+    private var inFlight: PixelOp?
+    private var inFlightRetried = false
+    private var opTimeout: DispatchWorkItem?
+    private var queuedTarget: [RGB]?
+
     let ble: BLEManager
     let settings: AppSettings
     private var lastVersionIndex = 0
@@ -128,6 +155,7 @@ final class IdealController: ObservableObject {
         } else {
             send(IdealProtocol.diyEnter(), label: "DEN 00 (entra in DIY, azzera la tela)", expect: nil)
             diyActive = true
+            canvas = nil
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
                 self?.send(packet, label: "DOOD LED 1 \(name)", expect: "DOOD")
             }
@@ -175,6 +203,141 @@ final class IdealController: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
     }
 
+    // MARK: Più pixel (Milestone 2)
+
+    var canDraw: Bool { transportReady && protocolConfirmed && ble.isSettled }
+
+    /// Porta la tela del controller al disegno `target` (un colore per indice), usando solo DOOD
+    /// verificati. Se un invio è in corso, il nuovo disegno viene accodato e applicato dopo.
+    func apply(target: [RGB]) {
+        guard canDraw else { lastResult = "Verifica di compatibilità incompleta."; return }
+        guard !target.isEmpty, target.count <= min(settings.ledCount, IdealProtocol.maxSafeLEDs) else {
+            lastResult = "Disegno di \(target.count) LED oltre il limite configurato (\(settings.ledCount))."
+            return
+        }
+        if transfer?.isRunning == true {
+            queuedTarget = target
+            return
+        }
+        if !diyActive {
+            send(IdealProtocol.diyEnter(), label: "DEN 00 (entra in DIY, azzera la tela)", expect: nil)
+            diyActive = true
+            canvas = [RGB](repeating: .black, count: target.count)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in self?.start(target) }
+        } else {
+            start(target)
+        }
+    }
+
+    func cancelTransfer() {
+        opQueue = []
+        queuedTarget = nil
+        opTimeout?.cancel()
+        inFlight = nil
+        if transfer?.isRunning == true {
+            transfer?.error = "Annullato"
+            canvas = nil   // alcuni pixel potrebbero essere stati applicati senza conferma
+        }
+    }
+
+    private func start(_ target: [RGB]) {
+        let current = (canvas?.count == target.count) ? canvas : nil
+        let ops = PixelPlanner.plan(current: current, target: target)
+        log.add(.event, nil, "Disegno: \(ops.count) comandi DOOD per \(target.count) LED")
+        if ops.isEmpty {
+            transfer = Transfer(total: 0, done: 0, startedAt: Date(), retries: 0, finishedAt: Date(), error: nil)
+            return
+        }
+        if current == nil { canvas = [RGB](repeating: .black, count: target.count) }
+        opQueue = ops
+        transfer = Transfer(total: ops.count, done: 0, startedAt: Date(), retries: 0, finishedAt: nil, error: nil)
+        sendNextOp()
+    }
+
+    private func packet(for op: PixelOp) throws -> [UInt8] {
+        let b = min(max(settings.diyBrightness, 0), 100)
+        switch op {
+        case .fill(let c): return try IdealProtocol.diyFill(ledCount: canvas?.count ?? settings.ledCount, color: c, brightness: b)
+        case .pixel(let i, let c): return try IdealProtocol.diyPixel(index: i, color: c, brightness: b)
+        }
+    }
+
+    private func sendNextOp() {
+        guard !opQueue.isEmpty else { finishTransfer(); return }
+        let op = opQueue.removeFirst()
+        inFlight = op
+        inFlightRetried = false
+        transmit(op)
+    }
+
+    private func transmit(_ op: PixelOp) {
+        let plain: [UInt8]
+        do { plain = try packet(for: op) } catch {
+            failTransfer("\(error)")
+            return
+        }
+        let label: String
+        switch op {
+        case .fill(let c): label = "DOOD riempi \(Hex.string([c.r, c.g, c.b], separator: ""))"
+        case .pixel(let i, let c): label = "DOOD #\(i) \(Hex.string([c.r, c.g, c.b], separator: ""))"
+        }
+        if let err = send(plain, label: label, expect: nil) {
+            failTransfer(err)
+            return
+        }
+        opTimeout?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.opTimedOut() }
+        opTimeout = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: work)
+    }
+
+    private func opAcked() {
+        opTimeout?.cancel()
+        guard let op = inFlight else { return }
+        if var c = canvas {
+            PixelPlanner.apply(op, to: &c)
+            canvas = c
+        }
+        inFlight = nil
+        transfer?.done += 1
+        sendNextOp()
+    }
+
+    private func opTimedOut() {
+        guard let op = inFlight else { return }
+        if !inFlightRetried {
+            inFlightRetried = true
+            transfer?.retries += 1
+            log.add(.event, IdealUUID.notify, "Nessun DOODOK entro 1 s: ritento una volta")
+            transmit(op)
+        } else {
+            failTransfer("Nessuna conferma DOODOK dopo un nuovo tentativo")
+        }
+    }
+
+    private func failTransfer(_ reason: String) {
+        opTimeout?.cancel()
+        opQueue = []
+        inFlight = nil
+        canvas = nil
+        transfer?.error = reason
+        lastResult = "Invio interrotto: \(reason)"
+        log.add(.error, nil, "Invio interrotto: \(reason)")
+    }
+
+    private func finishTransfer() {
+        transfer?.finishedAt = Date()
+        if let t = transfer {
+            let rate = t.opsPerSecond.map { String(format: "%.1f", $0) } ?? "-"
+            lastResult = "Disegno applicato: \(t.done) comandi, \(rate) cmd/s"
+            log.add(.event, nil, "Disegno applicato: \(t.done) comandi, \(rate) cmd/s, ritentativi \(t.retries)")
+        }
+        if let next = queuedTarget {
+            queuedTarget = nil
+            start(next)
+        }
+    }
+
     // MARK: Notifiche
 
     private func handleValue(_ uuid: String, _ bytes: [UInt8]) {
@@ -198,6 +361,9 @@ final class IdealController: ObservableObject {
     }
 
     private func confirm(_ tag: String) {
+        if tag == "DOOD", inFlight != nil {
+            opAcked()
+        }
         if !sessionAcks.contains(tag) { sessionAcks.append(tag) }
         settings.addConfirmedTag(tag, for: deviceName)
         if pending?.tag == tag {
@@ -214,6 +380,12 @@ final class IdealController: ObservableObject {
         diyActive = false
         pending = nil
         ackTimeout?.cancel()
+        if transfer?.isRunning == true { transfer?.error = "Disconnesso durante l'invio" }
+        opQueue = []
+        inFlight = nil
+        queuedTarget = nil
+        opTimeout?.cancel()
+        canvas = nil
     }
 
     // MARK: Diagnostica

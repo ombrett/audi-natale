@@ -70,23 +70,6 @@ struct LEDMapView: View {
     }
 }
 
-struct EditorView: View {
-    var body: some View {
-        PlannedScreen(
-            title: "Editor", milestone: "4", systemImage: "paintbrush.pointed",
-            summary: "Editor LED su vista 2D: pennello, gomma, riempimento, colori, luminosità, testo, disegni, anteprima, preset, più centraline.",
-            steps: [
-                "Stato pixel per controller con limite di sicurezza a 400 LED ciascuno finché il firmware 23.09.12.1 non è analizzato.",
-                "Invio dei disegni con DOOT (run di colori, 14 record per frame) e verifica di ogni ack DOOTREOK.",
-                "Aggiornamenti singoli con DOOD per le modifiche piccole.",
-                "Preset salvati in locale.",
-            ],
-            dependency: "Richiede il trasferimento dei disegni verificato (Milestone 2)."
-        )
-        .toolbar { NavigationLink("Animations") { AnimationsView() } }
-    }
-}
-
 struct AnimationsView: View {
     var body: some View {
         PlannedScreen(

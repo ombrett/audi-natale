@@ -20,8 +20,8 @@ struct DashboardView: View {
                         .buttonStyle(AccentButtonStyle())
                 }
                 Card(title: "Milestone", systemImage: "flag.checkered") {
-                    milestone("1", "Bluetooth Lab, diagnostica, log, HEX, build CI", state: "Implementata — da provare sull'auto")
-                    milestone("2", "Protocollo verificato, primo pixel, più pixel, disegni", state: "Encoder pronti e testati sui vettori; manca la prova fisica")
+                    milestone("1", "Bluetooth Lab, diagnostica, log, HEX, build CI", state: "Completata e verificata su ISP-B0717F")
+                    milestone("2", "Protocollo verificato, primo pixel, più pixel, disegni", state: "Primo pixel verificato; editor 200 LED con DOOD confermati da provare. DOOT in blocco: in attesa di cattura")
                     milestone("3", "Mappatura con fotocamera", state: "Non iniziata")
                     milestone("4", "Editor avanzato, animazioni, 1600 LED", state: "Non iniziata")
                 }
@@ -57,7 +57,7 @@ struct DashboardView: View {
                 .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Theme.stroke))
             VStack(alignment: .leading, spacing: 6) {
                 Text("Audi A1 · 2020").font(.caption).foregroundStyle(Theme.textSecondary)
-                Text("1600 LED previsti").font(.title2.weight(.semibold))
+                Text("2 × 200 LED · cablaggio a Y").font(.title2.weight(.semibold))
                 HStack(spacing: 8) {
                     StatusDot(color: ble.phase == .ready ? Theme.ok : Theme.textSecondary, pulsing: ble.phase == .ready)
                     Text(ble.phase.label).font(.footnote).foregroundStyle(Theme.textSecondary)

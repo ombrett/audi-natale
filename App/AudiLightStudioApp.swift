@@ -7,6 +7,7 @@ struct AudiLightStudioApp: App {
     @StateObject private var log: PacketLog
     @StateObject private var ble: BLEManager
     @StateObject private var ideal: IdealController
+    @StateObject private var presets = PresetStore()
 
     init() {
         let settings = AppSettings()
@@ -39,6 +40,7 @@ struct AudiLightStudioApp: App {
                 .environmentObject(log)
                 .environmentObject(ble)
                 .environmentObject(ideal)
+                .environmentObject(presets)
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
         }

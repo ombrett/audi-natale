@@ -115,6 +115,26 @@ check(level(hex("02 0A 32 00 00 00 00 00 00 00 00 00 00 00 00 00"), .rhythm) == 
 check(level([0x07, 0x00, 0xFF], .bulk) == .experimental, "bulk sperimentale")
 check(level([UInt8](repeating: 0, count: 101), .bulk) == .blocked, "bulk 101 byte bloccato")
 
+// MARK: Pianificatore pixel
+let black200 = [RGB](repeating: .black, count: 200)
+var oneRed = black200; oneRed[0] = .red
+check(PixelPlanner.plan(current: black200, target: oneRed) == [.pixel(0, .red)], "plan: un pixel cambiato")
+check(PixelPlanner.plan(current: oneRed, target: oneRed).isEmpty, "plan: nessun cambiamento")
+check(PixelPlanner.plan(current: nil, target: oneRed) == [.fill(.black), .pixel(0, .red)], "plan: stato sconosciuto riempie")
+var mostlyBlue = [RGB](repeating: .blue, count: 200); mostlyBlue[5] = .red
+check(PixelPlanner.plan(current: black200, target: mostlyBlue) == [.fill(.blue), .pixel(5, .red)], "plan: riempi + eccezioni")
+var state = black200
+for op in PixelPlanner.plan(current: black200, target: mostlyBlue) { PixelPlanner.apply(op, to: &state) }
+check(state == mostlyBlue, "plan: applicato produce il target")
+var alt = black200
+for i in stride(from: 0, to: 200, by: 2) { alt[i] = .red }
+let altPlan = PixelPlanner.plan(current: black200, target: alt)
+check(altPlan.count == 100, "plan: alternato 100 operazioni", "\(altPlan.count)")
+var s2 = black200
+for op in altPlan { PixelPlanner.apply(op, to: &s2) }
+check(s2 == alt, "plan: alternato corretto")
+check(PixelPlanner.mostFrequent([.red, .blue, .blue]) == .blue, "colore più frequente")
+
 print("\n\(passed) superati, \(failures) falliti")
 if let dir = CommandLine.arguments.dropFirst().first {
     try? "\(passed) superati, \(failures) falliti\n".write(toFile: dir + "/logic-summary.txt", atomically: true, encoding: .utf8)
