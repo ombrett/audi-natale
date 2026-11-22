@@ -571,6 +571,42 @@ if let data = FileManager.default.contents(atPath: "Resources/AudiLightStudio_Ef
     } else { check(false, "pacchetto A1: leggibile") }
 }
 
+// MARK: Allineamento della scansione al progetto e animazioni adattate
+let regCtrl = UUID()
+var designPts: [EffectPoint] = []
+for i in 0..<60 {
+    let x = -1.8 + Double(i) * 0.06, y = 0.4 + 0.9 * Double(i % 7) / 7
+    designPts.append(EffectPoint(key: LEDKey(controller: regCtrl, pixel: i), position: SIMD3(x, y, -0.8)))
+    designPts.append(EffectPoint(key: LEDKey(controller: regCtrl, pixel: i), position: SIMD3(x, y, 0.8)))   // copia a Y
+}
+// Scansione: auto ruotata di 2 rad, spostata e scala 1,02; le copie a Y arrivano in ordine inverso.
+let trueA = CarAlignment(yaw: 2.0, offset: SIMD3(3, -1.2, 5), scale: 1.02)
+func inverse(_ a: CarAlignment, _ car: SIMD3<Double>) -> SIMD3<Double> {
+    let q = car / a.scale
+    let c = cos(a.yaw), s = sin(a.yaw)
+    return SIMD3(c * q.x - s * q.z, q.y, s * q.x + c * q.z) + a.offset
+}
+var scanPts = designPts.reversed().map { EffectPoint(key: $0.key, position: inverse(trueA, $0.position)) }
+check(simd_distance(trueA.toCar(scanPts[0].position), designPts.last!.position) < 1e-9, "registrazione: inversa di prova corretta")
+// 10 pixel montati diversamente dal progetto (spostati di 60 cm).
+for i in 0..<20 { scanPts[i].position += SIMD3(0.6, 0, 0.3) }
+if let fit = LayoutRegistration.fit(scan: scanPts, design: designPts) {
+    let err = designPts[100...].map { simd_distance(fit.alignment.toCar(inverse(trueA, $0.position)), $0.position) }.max() ?? 1
+    check(err < 0.005, "registrazione: ritrova rotazione, posizione e scala", "\(err)")
+    check(fit.isGood && fit.total == 60 && fit.used == 50, "registrazione: pixel montati diversamente esclusi", fit.summary)
+} else { check(false, "registrazione: stima") }
+check(LayoutRegistration.fit(scan: scanPts, design: [EffectPoint(key: LEDKey(controller: UUID(), pixel: 0), position: .zero)]) == nil, "registrazione: nessun pixel in comune")
+
+let rtDesign = [LEDLayoutImport.Point(controller: 0, pixel: 0, position: SIMD3(1.8, 0.8, 0), zone: nil, branch: nil),
+                LEDLayoutImport.Point(controller: 0, pixel: 1, position: SIMD3(-1.8, 0.8, 0), zone: nil, branch: nil)]
+let rtKey = LEDKey(controller: regCtrl, pixel: 7)
+let rtTable = ClipRetarget.table(scanned: [EffectPoint(key: rtKey, position: SIMD3(-1.7, 0.7, 0.1)),
+                                           EffectPoint(key: LEDKey(controller: regCtrl, pixel: 8), position: SIMD3(1.6, 0.9, 0)),
+                                           EffectPoint(key: LEDKey(controller: regCtrl, pixel: 8), position: SIMD3(-1.6, 0.9, 0))], design: rtDesign)
+let rtColors = ClipRetarget.colors([[.red, .blue]], table: rtTable)
+check(rtColors[rtKey] == .blue, "animazioni su scansione: colore del punto di progetto più vicino")
+check(rtColors[LEDKey(controller: regCtrl, pixel: 8)] == RGB(r: 128, g: 0, b: 128), "animazioni su scansione: copie a Y lontane = media")
+
 print("\n\(passed) superati, \(failures) falliti")
 if let dir = CommandLine.arguments.dropFirst().first {
     try? "\(passed) superati, \(failures) falliti\n".write(toFile: dir + "/logic-summary.txt", atomically: true, encoding: .utf8)

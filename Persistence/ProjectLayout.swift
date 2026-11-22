@@ -6,6 +6,26 @@ import Foundation
 enum ProjectLayout {
     static var bundledURL: URL? { Bundle.main.url(forResource: "Audi_A1_LED1600", withExtension: "json") }
 
+    /// Layout di progetto incluso nell'app, letto una volta.
+    static let bundled: LEDLayoutImport.Result? = bundledURL.flatMap { try? Data(contentsOf: $0) }.flatMap { try? LEDLayoutImport.parse($0) }
+
+    /// Posizioni di progetto con le chiavi delle centraline attuali (pacco n → n-esima della lista).
+    static func designPoints(controllers: [ControllerConfig]) -> [EffectPoint]? {
+        guard let r = bundled else { return nil }
+        let list = controllers.sorted { $0.order < $1.order }
+        let pts = r.points.compactMap { p -> EffectPoint? in
+            guard list.indices.contains(p.controller) else { return nil }
+            return EffectPoint(key: LEDKey(controller: list[p.controller].id, pixel: p.pixel), position: p.position)
+        }
+        return pts.isEmpty ? nil : pts
+    }
+
+    /// Allinea una mappa scansionata al progetto; nil se il progetto non c'è o i LED non corrispondono abbastanza.
+    static func register(_ map: CarMap, controllers: [ControllerConfig]) -> LayoutRegistration.Fit? {
+        guard let design = designPoints(controllers: controllers) else { return nil }
+        return LayoutRegistration.fit(scan: map.leds.map { EffectPoint(key: $0.key, position: $0.world) }, design: design)
+    }
+
     struct Assignment: Identifiable {
         let id = UUID()
         let fileName: String          // "A", "B", …

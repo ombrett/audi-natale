@@ -29,6 +29,11 @@ final class EffectPlayer: ObservableObject {
     /// Posizione nell'animazione in secondi: accumula il tempo × velocità, così cambiare velocità non fa salti.
     private var clipPosition = 0.0
     private var lastTick = CACurrentMediaTime()
+    /// Con una mappa scansionata le animazioni del pacchetto seguono le posizioni reali dei LED.
+    @Published var clipsFollowScan = true { didSet { rebuildRetarget() } }
+    @Published private(set) var clipRetargetActive = false
+    private var retargetTable: [LEDKey: [ClipRetarget.Source]]?
+    private var map: CarMap?
 
     let hub: ControllerHub
     let library: EffectLibrary
@@ -50,6 +55,8 @@ final class EffectPlayer: ObservableObject {
     func setMap(_ map: CarMap?) {
         context = map.map { EffectContext(points: $0.effectPoints) }
         controllers = hub.controllers
+        self.map = map
+        rebuildRetarget()
         if !isPlaying, let program { renderPreview(program, at: 0) }
     }
 
@@ -80,6 +87,7 @@ final class EffectPlayer: ObservableObject {
         playlist = nil
         clipPack = pack
         clip = p
+        rebuildRetarget()
         clipPosition = 0
         start()
     }
@@ -94,7 +102,20 @@ final class EffectPlayer: ObservableObject {
     private func clipColors() -> [LEDKey: RGB]? {
         guard let clip, let clipPack else { return nil }
         let index = FramePack.frameIndex(clip, position: clipPosition)
-        return FramePack.keyed(clipPack.colors(clip, frame: index, settings: clipSettings), controllers: hub.controllers)
+        let rows = clipPack.colors(clip, frame: index, settings: clipSettings)
+        if let retargetTable { return ClipRetarget.colors(rows, table: retargetTable) }
+        return FramePack.keyed(rows, controllers: hub.controllers)
+    }
+
+    /// Tabella "LED scansionato → indirizzo di progetto più vicino", solo per mappe misurate e pacchetti
+    /// con la stessa struttura del layout di progetto (stessi pacchi e indirizzi).
+    private func rebuildRetarget() {
+        retargetTable = nil
+        clipRetargetActive = false
+        guard clipsFollowScan, let map, map.isMeasured, let layout = ProjectLayout.bundled else { return }
+        if let clipPack, clipPack.addressCounts != layout.controllers.map({ $0.addressCount }) { return }
+        retargetTable = ClipRetarget.table(scanned: map.effectPoints, design: layout.points)
+        clipRetargetActive = retargetTable?.isEmpty == false
     }
 
     func stop() {

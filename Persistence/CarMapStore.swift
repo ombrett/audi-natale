@@ -30,6 +30,8 @@ struct CarMap: Codable, Identifiable, Equatable {
     var isDemo = false
     /// "design" = posizioni prese dal file di progetto (Blender), non misurate sull'auto.
     var source: String? = nil
+    /// Esito dell'ultimo allineamento automatico al progetto (da mostrare all'utente).
+    var alignmentInfo: String? = nil
 
     var isDesign: Bool { source == "design" }
     /// Vero solo per le mappe ottenute dalla scansione (né dimostrative né da progetto).

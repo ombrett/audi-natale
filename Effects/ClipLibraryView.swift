@@ -30,9 +30,10 @@ struct ClipLibraryView: View {
                                 .background(Capsule().fill(Theme.surfaceHigh))
                         }
                         Spacer()
-                        if carMaps.active?.isDesign != true { Badge(text: "SERVE IL LAYOUT A1", color: Theme.warning) }
+                        if carMaps.active?.isDesign != true && carMaps.active?.isMeasured != true { Badge(text: "SERVE IL LAYOUT A1", color: Theme.warning) }
+                        if carMaps.active?.isMeasured == true && player.clipRetargetActive { Badge(text: "SU SCANSIONE", color: Theme.ok) }
                     }
-                    if carMaps.active?.isDesign != true {
+                    if carMaps.active == nil || carMaps.active?.isDemo == true {
                         Text("Le animazioni sono calcolate sul layout di progetto: caricalo da Mappa 3D → menu mappa → \"Carica layout A1 di progetto\" per vederle al posto giusto.")
                             .font(.caption).foregroundStyle(Theme.warning)
                     }
@@ -44,7 +45,7 @@ struct ClipLibraryView: View {
         }
         .screenBackground()
         .navigationTitle("60 animazioni A1")
-        .onAppear { clips.loadIfNeeded() }
+        .onAppear { clips.loadIfNeeded(); player.setMap(carMaps.active) }
         .onChange(of: useTint) { _ in applyTint() }
         .onChange(of: tint) { _ in applyTint() }
     }
@@ -57,6 +58,13 @@ struct ClipLibraryView: View {
             .pickerStyle(.segmented)
             slider("Velocità", value: $player.clipSettings.speed, range: 0.5...2, format: "%.2f×")
             slider("Intensità", value: $player.clipSettings.intensity, range: 0...1, format: "%.0f%%", scale: 100)
+            if carMaps.active?.isMeasured == true {
+                Toggle("Segui le posizioni della scansione", isOn: $player.clipsFollowScan)
+                Text(player.clipRetargetActive
+                     ? "Ogni LED prende il colore del punto del progetto più vicino alla sua posizione reale: le animazioni restano al loro posto anche se le strisce sono montate diversamente."
+                     : "Spento: i colori vanno per indirizzo, come nel file (giusto solo se il montaggio è uguale al progetto).")
+                    .font(.caption2).foregroundStyle(Theme.textSecondary)
+            }
             Toggle("Colore unico", isOn: $useTint)
             if useTint { ColorPicker("Colore", selection: $tint, supportsOpacity: false) }
             if player.isPlaying && player.clip != nil {

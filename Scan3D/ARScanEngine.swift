@@ -234,6 +234,15 @@ final class ARScanEngine: NSObject, ObservableObject, ARSessionDelegate {
         let leds = reconstructed.map { PhysicalLED(key: $0.key, world: $0.position, confidence: $0.confidence, views: $0.views) }
         var map = CarMap(name: name, leds: leds)
         map.alignment = AutoAlign.fit(leds.map { $0.world })
+        // Con il layout di progetto gli stessi pixel hanno una posizione prevista: allineamento esatto, verso compreso.
+        if let fit = ProjectLayout.register(map, controllers: hub.controllers) {
+            if fit.isGood {
+                map.alignment = fit.alignment
+                map.alignmentInfo = "Allineata al progetto automaticamente: " + fit.summary
+            } else {
+                map.alignmentInfo = "Allineamento al progetto non affidabile (" + fit.summary + "): usato l'allineamento per forma, controlla davanti/dietro."
+            }
+        }
         map.observations = observations
         map.viewCount = views.filter { $0.accepted }.count
         return map

@@ -182,6 +182,7 @@ struct Studio3DView: View {
                 info("Nome", m.name)
                 info("LED fisici", "\(m.leds.count)")
                 info("Pixel coperti", "\(cov.found) / \(cov.total)")
+                if let note = m.alignmentInfo { Text(note).font(.caption).foregroundStyle(Theme.textSecondary) }
                 if m.isDesign {
                     Text("Posizioni prese dal progetto Blender: corrispondono all'auto solo se le strisce sono montate come nel progetto. Verifica con \"Accendi\" su alcuni LED; una scansione misura quelle vere.")
                         .font(.caption).foregroundStyle(Theme.textSecondary)
@@ -304,19 +305,33 @@ struct Studio3DView: View {
 struct AlignmentSheet: View {
     @EnvironmentObject var carMaps: CarMapStore
     @EnvironmentObject var player: EffectPlayer
+    @EnvironmentObject var hub: ControllerHub
     @Environment(\.dismiss) private var dismiss
     @State private var a = CarAlignment()
+    @State private var fitNote: String?
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Button("Allineamento automatico") {
+                    Button("Allinea al progetto (usa gli indirizzi dei LED)") {
+                        guard let m = carMaps.active, let fit = ProjectLayout.register(m, controllers: hub.controllers) else {
+                            fitNote = "Nessun pixel in comune con il layout di progetto."
+                            return
+                        }
+                        a = fit.alignment
+                        fitNote = (fit.isGood ? "" : "Attenzione, poco affidabile: ") + fit.summary
+                    }
+                } footer: {
+                    Text(fitNote ?? "Confronta ogni pixel scansionato con la sua posizione nel progetto Blender: trova anche il verso dell'auto. I LED montati diversamente dal progetto vengono ignorati nel calcolo e restano dove li ha misurati la scansione.")
+                }
+                Section {
+                    Button("Allineamento per forma") {
                         if let m = carMaps.active { a = AutoAlign.fit(m.leds.map { $0.world }) }
                     }
                     Button("Inverti davanti/dietro") { a.yaw += .pi }
                 } footer: {
-                    Text("L'automatico porta l'asse più lungo della nuvola di LED lungo l'auto. Il verso avanti/dietro va scelto a mano.")
+                    Text("Per forma: porta l'asse più lungo della nuvola di LED lungo l'auto. Il verso avanti/dietro va scelto a mano.")
                 }
                 Section("Rotazione") {
                     Slider(value: Binding(get: { a.yaw * 180 / .pi }, set: { a.yaw = $0 * .pi / 180 }), in: -180...180) { Text("Imbardata") }
