@@ -387,11 +387,13 @@ var maxW = 0.0
 for x in CarShape.stations { for p in CarShape.halfSection(x) { maxW = max(maxW, p.z) } }
 check(maxW <= CarDimensions.width / 2 + 0.01, "forma: larghezza entro 1,74 m", "\(maxW)")
 var monotoneOK = true
-for i in 0..<200 {
-    let x0 = -2.0 + Double(i) * 0.02
-    if abs(CarShape.topY(x0 + 0.02) - CarShape.topY(x0)) > 0.06 { monotoneOK = false }
+let ctrl: [(Double, Double)] = [(-1.0, 0.0), (0.0, 1.0), (1.0, 1.0), (2.0, 0.0), (3.0, 0.2)]
+for i in 0...300 {
+    let x0 = -1.0 + Double(i) * 0.0133
+    let y0 = CarShape.interp(ctrl, x0)
+    if y0 < -1e-9 || y0 > 1.0 + 1e-9 { monotoneOK = false }   // nessuna oscillazione oltre i punti
 }
-check(monotoneOK, "forma: profilo senza salti")
+check(monotoneOK, "forma: interpolazione senza oscillazioni")
 
 // MARK: UUID (bug 2.0: iOS presenta FFF0 nella forma lunga)
 check(IdealUUID.normalize("0000FFF0-0000-1000-8000-00805F9B34FB") == "FFF0", "uuid: forma lunga → corta")
