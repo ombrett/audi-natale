@@ -76,7 +76,8 @@ enum BlobDetector {
         let mean = sum / n
         let std = max(0, sumSq / n - mean * mean).squareRoot()
         let threshold = max(options.minimumThreshold, peak * options.relativeThreshold, Float(mean + 4 * std))
-        guard peak >= threshold else { return [] }
+        // Serve un contrasto reale rispetto alla media (un cambio uniforme di luce non è un LED).
+        guard peak >= threshold, Double(peak) - mean >= Double(options.minimumThreshold) else { return [] }
 
         var visited = [Bool](repeating: false, count: w * h)
         var blobs: [Blob] = []
