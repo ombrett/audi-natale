@@ -36,6 +36,12 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 
 Il firmware più vicino analizzato (TR2309) ha buffer da **400 LED** e scrive fuori memoria, in modo persistente, oltre quel limite. Un solo controller da 1600 LED non è dimostrato: probabilmente servono più centraline (es. 4 × 400). L'app non supera 400 finché non sarà dimostrato il contrario. Dettagli in [docs/PROTOCOL.md §5](docs/PROTOCOL.md).
 
+## Versione 2.9 — layout S-Line corretto
+
+- Layout rigenerato sulla carrozzeria S-Line: nessun LED né tratto di striscia su vetri, fari, stop, targa, griglia, specchi o ruote (striscia ad almeno 17 mm); ogni zona sta su un solo pannello (porte, cofano e portellone apribili hanno la loro sezione); passo massimo 10 cm tra LED consecutivi lungo la striscia; tagli con prolunga dichiarati nel file (`lead_before_m`).
+- Import del layout: controllo del passo (tratti oltre 10,5 cm senza prolunga segnalati) e riepilogo delle prolunghe.
+- Il .blend del progetto non è stato toccato: `aggiorna_LED_in_Blender.py` (consegnato a parte) sposta i LED alle nuove posizioni.
+
 ## Versione 2.8 — carrozzeria Audi A1 S-Line
 
 - `Resources/Audi_A1_LED1600.glb` e `.json` sostituiti con la versione S-Line (4,03 m, 486 mila triangoli, 1600 marcatori LED esclusi dalla geometria; mappa di progetto 4 × 200 indirizzi × 2 rami).

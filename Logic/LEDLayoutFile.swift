@@ -61,6 +61,8 @@ struct LEDLayoutFile: Codable {
         var index: Int
         var zone: String?
         var targets: [Target]
+        /// Prolunga di cavo prevista prima di questo LED (striscia tagliata e ricollegata), in metri.
+        var lead_before_m: Double?
     }
     struct Controller: Codable {
         var id: String
@@ -93,11 +95,23 @@ enum LEDLayoutImport {
         var branches: Int
     }
 
+    /// Distanza tra due LED consecutivi dello stesso ramo oltre il passo della striscia.
+    struct Jump: Equatable {
+        var controller: String
+        var index: Int          // LED dopo il salto
+        var branch: String
+        var meters: Double
+        var declaredLead: Bool  // prolunga indicata nel file
+    }
+
     struct Result: Equatable {
         var controllers: [Controller]
         var points: [Point]
         var frame: AxisFrame
         var warnings: [String]
+        var jumps: [Jump] = []
+        var undeclaredJumps: [Jump] { jumps.filter { !$0.declaredLead } }
+        var leadCount: Int { jumps.filter { $0.declaredLead }.count }
         var physicalCount: Int { points.count }
         var logicalCount: Int { Set(points.map { "\($0.controller)#\($0.pixel)" }).count }
     }
@@ -127,6 +141,9 @@ enum LEDLayoutImport {
     }
 
     static let maxControllers = 8
+    /// Passo dei LED lungo la striscia (20 m, 200 LED) con una tolleranza di 5 mm.
+    static let stripPitch = 0.10
+    static let pitchTolerance = 0.005
     /// Oltre questa distanza dall'origine (m) un punto non può appartenere a un'auto.
     static let maxDistance = 10.0
 
@@ -159,6 +176,7 @@ enum LEDLayoutImport {
         let base = file.led_index_base ?? 0
         var controllers: [Controller] = []
         var points: [Point] = []
+        var jumps: [Jump] = []
         for (ci, c) in file.controllers.enumerated() {
             let maxIndex = c.addresses.map { $0.index - base }.max() ?? -1
             let count = max(c.address_count ?? 0, maxIndex + 1)
@@ -178,6 +196,22 @@ enum LEDLayoutImport {
                 }
             }
             if seen.count < count { warnings.append("Centralina \(c.id): \(count - seen.count) indirizzi senza posizione.") }
+            // Controllo del passo: la distanza in linea retta tra LED consecutivi dello stesso ramo non può
+            // superare il passo della striscia, salvo prolunga di cavo indicata nel file.
+            let sorted = c.addresses.sorted { $0.index < $1.index }
+            for (prev, next) in zip(sorted, sorted.dropFirst()) where next.index == prev.index + 1 {
+                for (bi, t) in next.targets.enumerated() {
+                    let branch = t.branch ?? "#\(bi)"
+                    guard let p = prev.targets.first(where: { ($0.branch ?? "") == (t.branch ?? "") }) ?? (prev.targets.indices.contains(bi) ? prev.targets[bi] : nil),
+                          p.position.count == 3, t.position.count == 3 else { continue }
+                    let a = frame.toApp(SIMD3(p.position[0], p.position[1], p.position[2]))
+                    let b = frame.toApp(SIMD3(t.position[0], t.position[1], t.position[2]))
+                    let d = ((a - b) * (a - b)).sum().squareRoot()
+                    if d > stripPitch + pitchTolerance {
+                        jumps.append(Jump(controller: c.id, index: next.index - base, branch: branch, meters: d, declaredLead: next.lead_before_m != nil))
+                    }
+                }
+            }
             if let declared = c.physical_led_count, declared != c.addresses.reduce(0, { $0 + $1.targets.count }) {
                 warnings.append("Centralina \(c.id): LED fisici dichiarati \(declared), trovati \(c.addresses.reduce(0) { $0 + $1.targets.count }).")
             }
@@ -186,6 +220,11 @@ enum LEDLayoutImport {
         if let declared = file.physical_led_count, declared != points.count {
             warnings.append("LED fisici dichiarati \(declared), trovati \(points.count).")
         }
-        return Result(controllers: controllers, points: points, frame: frame, warnings: warnings)
+        let undeclared = jumps.filter { !$0.declaredLead }
+        if !undeclared.isEmpty {
+            let longest = undeclared.map { $0.meters }.max() ?? 0
+            warnings.append(String(format: "%d tratti tra LED consecutivi più lunghi del passo di 10 cm senza prolunga indicata (il più lungo %.2f m): la striscia non arriva, serve tagliarla e aggiungere cavo.", undeclared.count, longest))
+        }
+        return Result(controllers: controllers, points: points, frame: frame, warnings: warnings, jumps: jumps)
     }
 }

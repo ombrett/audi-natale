@@ -523,6 +523,11 @@ if let data = FileManager.default.contents(atPath: "Resources/Audi_A1_LED1600.js
     if let r = try? LEDLayoutImport.parse(data) {
         check(r.controllers.count == 4 && r.physicalCount == 1600 && r.logicalCount == 800, "progetto A1: 4 × 200 pixel, 1600 LED")
         check(r.controllers.allSatisfy { $0.addressCount == 200 && $0.branches == 2 } && r.warnings.isEmpty, "progetto A1: pacchi a Y completi", r.warnings.joined(separator: "; "))
+        check(r.undeclaredJumps.isEmpty, "progetto A1 S-Line: nessun tratto oltre il passo di 10 cm senza prolunga",
+              r.undeclaredJumps.prefix(5).map { "\($0.controller)/\($0.index) \(String(format: "%.2f", $0.meters))" }.joined(separator: ", "))
+        check(r.leadCount > 0 && r.leadCount <= 24, "progetto A1 S-Line: prolunghe dichiarate e poche", "\(r.leadCount)")
+        let zonesUsed = Set(r.points.compactMap { $0.zone })
+        check(zonesUsed == Set(AdaptiveEffects.Zone.allCases.map { $0.rawValue }), "progetto A1 S-Line: tutte e 9 le zone presenti", "\(zonesUsed.sorted())")
         let lefts = r.points.filter { $0.branch == "left" }
         check(!lefts.isEmpty && lefts.allSatisfy { $0.position.z <= 0 }, "progetto A1: ramo sinistro sul lato sinistro")
     } else { check(false, "progetto A1: layout leggibile") }
@@ -774,6 +779,20 @@ try? FileManager.default.removeItem(at: zURL)
 let strip = zMap.stripPath(from: zMap.leds[2].id, to: zMap.leds[3].id)
 check(strip == [zMap.leds[2].id, secondID, zMap.leds[3].id], "zone: striscia 56→58 prende la copia di B/57 sulla fiancata")
 check(zMap.stripPath(from: zMap.leds[2].id, to: zMap.leds[4].id).isEmpty, "zone: striscia solo nella stessa centralina")
+
+// MARK: Controllo del passo della striscia (2.9)
+let pitchJSON = """
+{"controllers":[{"id":"A","addresses":[
+  {"index":0,"targets":[{"branch":"left","position":[0,1,-0.3]}]},
+  {"index":1,"targets":[{"branch":"left","position":[0.1,1,-0.3]}]},
+  {"index":2,"targets":[{"branch":"left","position":[0.6,1,-0.3]}]},
+  {"index":3,"lead_before_m":0.8,"targets":[{"branch":"left","position":[1.4,1,-0.3]}]}]}]}
+"""
+if let pr = try? LEDLayoutImport.parse(Data(pitchJSON.utf8)) {
+    check(pr.jumps.count == 2 && pr.undeclaredJumps.count == 1 && pr.undeclaredJumps[0].index == 2 && pr.leadCount == 1,
+          "passo: salto di 50 cm senza prolunga segnalato, quello con prolunga accettato")
+    check(pr.warnings.contains { $0.contains("senza prolunga") }, "passo: avviso nel riepilogo di importazione")
+} else { check(false, "passo: lettura") }
 
 print("\n\(passed) superati, \(failures) falliti")
 if let dir = CommandLine.arguments.dropFirst().first {

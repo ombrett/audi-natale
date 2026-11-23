@@ -357,6 +357,11 @@ struct Studio3DView: View {
             let dest = a.existing.map { "→ \($0.name)" } ?? "→ nuova \"Pacco \(a.fileName)\" da associare"
             lines.append("\(a.fileName): \(a.addressCount) pixel × \(a.branches) \(dest)")
         }
+        if r.leadCount > 0 {
+            let byCtrl = Dictionary(grouping: r.jumps.filter { $0.declaredLead && $0.branch == (r.jumps.first?.branch ?? "") }, by: { $0.controller })
+            let desc = byCtrl.keys.sorted().map { k in "\(k): " + byCtrl[k]!.map { String(format: "%d (%.2f m)", $0.index, $0.meters) }.joined(separator: ", ") }
+            lines.append("Prolunghe di cavo previste per ramo, prima del LED: " + desc.joined(separator: " · "))
+        }
         lines.append("L'ordine segue la lista Centraline: se un pacco è collegato a un'altra centralina, riordinale prima.")
         lines += r.warnings
         return lines.joined(separator: "\n")
