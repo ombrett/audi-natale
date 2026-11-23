@@ -1,21 +1,25 @@
 import SwiftUI
 
-/// Tema scuro "automotive": nero, antracite, accento cyan.
+/// Tema tecnico: fondo grafite, testo chiaro, separatori sottili, un solo accento menta
+/// (selezione e azioni attive). Ambra e rosso solo per avvisi ed errori veri.
 enum Theme {
-    static let background = Color(red: 0.035, green: 0.039, blue: 0.045)
-    static let surface = Color(red: 0.094, green: 0.102, blue: 0.114)
-    static let surfaceHigh = Color(red: 0.145, green: 0.157, blue: 0.172)
-    static let stroke = Color.white.opacity(0.08)
-    static let accent = Color(red: 0.0, green: 0.86, blue: 0.96)
-    static let accentDim = Color(red: 0.0, green: 0.86, blue: 0.96).opacity(0.18)
-    static let textPrimary = Color.white
-    static let textSecondary = Color.white.opacity(0.58)
-    static let ok = Color(red: 0.25, green: 0.88, blue: 0.55)
+    static let background = Color(red: 0.055, green: 0.063, blue: 0.075)      // #0E1013
+    static let surface = Color(red: 0.086, green: 0.094, blue: 0.110)         // #16181C
+    static let surfaceHigh = Color(red: 0.125, green: 0.137, blue: 0.157)     // #202328
+    static let stroke = Color.white.opacity(0.09)
+    static let accent = Color(red: 0.471, green: 0.918, blue: 0.757)          // #78EAC1 menta
+    static let accentDim = Color(red: 0.471, green: 0.918, blue: 0.757).opacity(0.14)
+    static let textPrimary = Color.white.opacity(0.94)
+    static let textSecondary = Color.white.opacity(0.55)
+    static let ok = accent
     static let warning = Color(red: 1.0, green: 0.72, blue: 0.2)
     static let danger = Color(red: 1.0, green: 0.33, blue: 0.33)
 
     static let mono = Font.system(.caption, design: .monospaced)
     static let monoSmall = Font.system(size: 11, design: .monospaced)
+    static let monoBody = Font.system(size: 16, design: .monospaced)
+
+    static func hex(_ c: RGB) -> String { String(format: "#%02X%02X%02X", c.r, c.g, c.b) }
 
     static func color(for level: SafetyLevel) -> Color {
         switch level {
@@ -62,11 +66,11 @@ struct StatusDot: View {
     @State private var on = false
 
     var body: some View {
+        // Nessun bagliore: un punto pieno; "pulsing" attenua appena l'opacità durante le operazioni in corso.
         Circle()
             .fill(color)
-            .frame(width: 9, height: 9)
-            .shadow(color: color.opacity(0.8), radius: on ? 6 : 2)
-            .scaleEffect(on ? 1.15 : 1)
+            .frame(width: 8, height: 8)
+            .opacity(pulsing && on ? 0.45 : 1)
             .onAppear {
                 guard pulsing else { return }
                 withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { on = true }
@@ -120,5 +124,34 @@ extension View {
 
     func screenBackground() -> some View {
         background(Theme.background.ignoresSafeArea())
+    }
+}
+
+/// Separatore sottile a tutta larghezza.
+struct Hairline: View {
+    var body: some View { Rectangle().fill(Theme.stroke).frame(height: 1) }
+}
+
+/// Riga "etichetta … valore" con valore in monospace, separata da una linea sottile.
+struct SpecRow<Trailing: View>: View {
+    var title: String
+    @ViewBuilder var trailing: Trailing
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text(title).font(.body).foregroundStyle(Theme.textPrimary)
+                Spacer(minLength: 12)
+                trailing
+            }
+            .padding(.vertical, 11)
+            Hairline()
+        }
+    }
+}
+
+extension SpecRow where Trailing == Text {
+    init(_ title: String, value: String) {
+        self.title = title
+        self.trailing = Text(value).font(Theme.monoBody).foregroundStyle(Theme.textPrimary)
     }
 }

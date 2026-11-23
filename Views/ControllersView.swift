@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ControllersView: View {
     @EnvironmentObject var hub: ControllerHub
+    @EnvironmentObject var player: EffectPlayer
     @State private var showAdd = false
     @State private var editing: ControllerConfig?
 
@@ -9,8 +10,8 @@ struct ControllersView: View {
         ScrollView {
             VStack(spacing: 14) {
                 summaryCard
-                ForEach(hub.orderedLinks) { link in
-                    ControllerCard(link: link) { editing = link.config }
+                ForEach(Array(hub.orderedLinks.enumerated()), id: \.element.id) { i, link in
+                    ControllerCard(link: link, letter: controllerLetter(i)) { editing = link.config }
                 }
                 if hub.controllers.isEmpty {
                     Text("Aggiungi le centraline ISP una alla volta. Chiudi l'app iDeal LED: ogni centralina accetta una sola connessione.")
@@ -30,6 +31,25 @@ struct ControllersView: View {
 
     private var summaryCard: some View {
         Card(title: "Impianto", systemImage: "network") {
+            // Stato reale per lettera: A, B, C, D nell'ordine della lista.
+            if !hub.controllers.isEmpty {
+                HStack(spacing: 0) {
+                    ForEach(Array(hub.orderedLinks.enumerated()), id: \.element.id) { i, link in
+                        VStack(spacing: 4) {
+                            Text(controllerLetter(i)).font(Theme.monoBody.weight(.semibold))
+                                .foregroundStyle(link.isReady ? Theme.accent : Theme.textSecondary)
+                            Circle().fill(link.isReady ? Theme.accent : (link.state.isBusy ? Theme.warning : Theme.surfaceHigh))
+                                .frame(width: 8, height: 8)
+                            Text(link.isReady ? "pronta" : (link.config.isPlaceholder ? "da associare" : link.state.label.lowercased()))
+                                .font(Theme.monoSmall).foregroundStyle(Theme.textSecondary).lineLimit(1).minimumScaleFactor(0.7)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                .accessibilityIdentifier("controllers-letters")
+                Hairline()
+            }
+            Text(situation).font(.caption).foregroundStyle(hub.readyLinks.isEmpty ? Theme.textSecondary : Theme.textPrimary)
             HStack {
                 stat("\(hub.controllers.count)", "centraline")
                 stat("\(hub.readyLinks.count)", "pronte")
@@ -52,6 +72,27 @@ struct ControllersView: View {
         }
     }
 
+    /// Zero, parziale, tutte; Bluetooth spento; disconnessione durante il Live.
+    private var situation: String {
+        let total = hub.enabledControllers.count, ready = hub.readyLinks.count
+        var s: String
+        if hub.bluetoothState != .poweredOn {
+            s = "Bluetooth non disponibile (\(hub.bluetoothState.label.lowercased())). Puoi lavorare offline: modello, mappa e anteprima degli effetti funzionano."
+        } else if total == 0 {
+            s = "Nessuna centralina configurata. Offline puoi comunque provare gli effetti sul modello."
+        } else if ready == 0 {
+            s = "0/\(total) collegate: lo Studio lavora in anteprima, all'auto non arriva nulla."
+        } else if ready < total {
+            s = "\(ready)/\(total) collegate: il Live invia solo alle centraline pronte."
+        } else {
+            s = "\(ready)/\(total) collegate."
+        }
+        if player.mode == .live && player.isPlaying && ready < total && total > 0 {
+            s += " Live in corso: le centraline scollegate non ricevono, le altre continuano."
+        }
+        return s
+    }
+
     private func stat(_ v: String, _ l: String) -> some View {
         VStack(spacing: 2) {
             Text(v).font(.title2.weight(.semibold)).foregroundStyle(Theme.accent)
@@ -64,6 +105,7 @@ struct ControllersView: View {
 struct ControllerCard: View {
     @EnvironmentObject var hub: ControllerHub
     @ObservedObject var link: ControllerLink
+    var letter: String = ""
     var onEdit: () -> Void
     @State private var identifying = false
 
@@ -79,7 +121,10 @@ struct ControllerCard: View {
     var body: some View {
         Card {
             HStack(spacing: 12) {
-                RoundedRectangle(cornerRadius: 4).fill(ControllerPalette.color(link.config.tint)).frame(width: 6, height: 44)
+                Text(letter).font(.system(size: 22, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(link.isReady ? Theme.accent : Theme.textSecondary)
+                    .frame(width: 30)
+                RoundedRectangle(cornerRadius: 2).fill(ControllerPalette.color(link.config.tint)).frame(width: 3, height: 40)
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
                         Text(link.config.name).font(.headline)

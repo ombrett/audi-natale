@@ -7,6 +7,8 @@ struct CarSceneContent: Equatable {
     var points: [SIMD3<Float>] = []
     var colors: [SIMD4<Float>] = []
     var selected: Int?
+    /// Copia dello stesso indirizzo sul ramo opposto della Y (anello vuoto).
+    var twin: Int?
     var bodyColor: RGB = RGB(r: 40, g: 44, b: 52)
     var modelURL: URL?
     var modelYawSteps = 0
@@ -21,6 +23,8 @@ struct CarSceneView: UIViewRepresentable {
     var camera: CameraPreset
     var cameraToken: Int
     var onSelect: ((Int?) -> Void)?
+    /// Direzioni a schermo degli assi X, Y, Z (per il gizmo), aggiornate mentre si ruota.
+    var onAxes: (([CGVector]) -> Void)? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -36,6 +40,9 @@ struct CarSceneView: UIViewRepresentable {
         view.autoenablesDefaultLighting = false
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
         view.addGestureRecognizer(tap)
+        view.delegate = context.coordinator
+        view.rendersContinuously = false
+        context.coordinator.onAxes = onAxes
         context.coordinator.view = view
         context.coordinator.apply(content, force: true)
         context.coordinator.move(to: camera, animated: false)
@@ -44,6 +51,7 @@ struct CarSceneView: UIViewRepresentable {
 
     func updateUIView(_ view: SCNView, context: Context) {
         context.coordinator.onSelect = onSelect
+        context.coordinator.onAxes = onAxes
         context.coordinator.apply(content, force: false)
         if context.coordinator.cameraToken != cameraToken {
             context.coordinator.cameraToken = cameraToken
@@ -51,11 +59,15 @@ struct CarSceneView: UIViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject {
+    final class Coordinator: NSObject, SCNSceneRendererDelegate {
         let scene = SCNScene()
         let cameraNode = SCNNode()
         weak var view: SCNView?
         var onSelect: ((Int?) -> Void)?
+        var onAxes: (([CGVector]) -> Void)?
+        private var lastAxes: [CGVector] = []
+        private var lastAxesTime: TimeInterval = 0
+        private let twinNode = SCNNode()
         var cameraToken = 0
         private var carNode: SCNNode?
         private let ledNode = SCNNode()
@@ -70,9 +82,10 @@ struct CarSceneView: UIViewRepresentable {
             cam.zNear = 0.05
             cam.zFar = 100
             cam.wantsHDR = true
-            cam.bloomIntensity = 1.2
-            cam.bloomThreshold = 0.6
-            cam.bloomBlurRadius = 6
+            // Alone minimo: i LED restano leggibili senza bagliori decorativi.
+            cam.bloomIntensity = 0.35
+            cam.bloomThreshold = 0.85
+            cam.bloomBlurRadius = 3
             cameraNode.camera = cam
             scene.rootNode.addChildNode(cameraNode)
 
@@ -83,8 +96,11 @@ struct CarSceneView: UIViewRepresentable {
             floor.reflectionFalloffEnd = 2.5
             let fm = SCNMaterial()
             fm.lightingModel = .physicallyBased
-            fm.diffuse.contents = UIColor(white: 0.035, alpha: 1)
-            fm.roughness.contents = 0.6
+            fm.diffuse.contents = Coordinator.gridImage()
+            fm.diffuse.wrapS = .repeat
+            fm.diffuse.wrapT = .repeat
+            fm.diffuse.contentsTransform = SCNMatrix4MakeScale(12, 12, 1)   // griglia da 0,5 m
+            fm.roughness.contents = 0.75
             floor.materials = [fm]
             scene.rootNode.addChildNode(SCNNode(geometry: floor))
 
@@ -97,13 +113,51 @@ struct CarSceneView: UIViewRepresentable {
             scene.rootNode.addChildNode(ambNode)
 
             scene.rootNode.addChildNode(ledNode)
-            let ring = SCNTorus(ringRadius: 0.06, pipeRadius: 0.008)
-            let rm = SCNMaterial(); rm.lightingModel = .constant; rm.diffuse.contents = UIColor(Theme.accent)
-            ring.materials = [rm]
-            selectionNode.geometry = ring
-            selectionNode.isHidden = true
-            selectionNode.constraints = [SCNBillboardConstraint()]
-            scene.rootNode.addChildNode(selectionNode)
+            // Punto toccato: cerchio pieno; copia sul ramo opposto: anello vuoto. Sempre rivolti alla camera.
+            let mint = SCNMaterial(); mint.lightingModel = .constant; mint.diffuse.contents = UIColor(Theme.accent)
+            mint.readsFromDepthBuffer = false
+            let disc = SCNCylinder(radius: 0.028, height: 0.001); disc.materials = [mint]
+            let discNode = SCNNode(geometry: disc); discNode.eulerAngles.x = .pi / 2
+            let outer = SCNTorus(ringRadius: 0.045, pipeRadius: 0.005); outer.materials = [mint]
+            let outerNode = SCNNode(geometry: outer); outerNode.eulerAngles.x = .pi / 2
+            selectionNode.addChildNode(discNode)
+            selectionNode.addChildNode(outerNode)
+            let ring = SCNTorus(ringRadius: 0.04, pipeRadius: 0.005); ring.materials = [mint]
+            let ringNode = SCNNode(geometry: ring); ringNode.eulerAngles.x = .pi / 2
+            twinNode.addChildNode(ringNode)
+            for n in [selectionNode, twinNode] {
+                n.isHidden = true
+                n.renderingOrder = 100
+                n.constraints = [SCNBillboardConstraint()]
+                scene.rootNode.addChildNode(n)
+            }
+        }
+
+        /// Texture della griglia del pavimento (linee sottili su grafite).
+        static func gridImage() -> UIImage {
+            let size = CGSize(width: 64, height: 64)
+            return UIGraphicsImageRenderer(size: size).image { ctx in
+                UIColor(red: 0.05, green: 0.056, blue: 0.066, alpha: 1).setFill()
+                ctx.fill(CGRect(origin: .zero, size: size))
+                UIColor(white: 1, alpha: 0.07).setFill()
+                ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 1))
+                ctx.fill(CGRect(x: 0, y: 0, width: 1, height: 64))
+            }
+        }
+
+        func renderer(_ renderer: SCNSceneRenderer, updateAtTime time: TimeInterval) {
+            guard let onAxes, time - lastAxesTime > 0.05, let pov = renderer.pointOfView else { return }
+            lastAxesTime = time
+            let m = pov.presentation.simdWorldTransform
+            let right = SIMD3<Float>(m.columns.0.x, m.columns.0.y, m.columns.0.z)
+            let up = SIMD3<Float>(m.columns.1.x, m.columns.1.y, m.columns.1.z)
+            let axes = [SIMD3<Float>(1, 0, 0), SIMD3<Float>(0, 1, 0), SIMD3<Float>(0, 0, 1)].map {
+                CGVector(dx: CGFloat(simd_dot($0, right)), dy: CGFloat(-simd_dot($0, up)))
+            }
+            let changed = zip(axes, lastAxes).contains { abs($0.dx - $1.dx) + abs($0.dy - $1.dy) > 0.01 } || lastAxes.isEmpty
+            guard changed else { return }
+            lastAxes = axes
+            DispatchQueue.main.async { onAxes(axes) }
         }
 
         func apply(_ c: CarSceneContent, force: Bool) {
@@ -135,6 +189,13 @@ struct CarSceneView: UIViewRepresentable {
                 selectionNode.isHidden = false
             } else {
                 selectionNode.isHidden = true
+            }
+            if let t = c.twin, c.points.indices.contains(t) {
+                let p = c.points[t]
+                twinNode.position = SCNVector3(p.x, p.y, p.z)
+                twinNode.isHidden = false
+            } else {
+                twinNode.isHidden = true
             }
             last = c
         }

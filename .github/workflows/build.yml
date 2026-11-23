@@ -11,7 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: macos-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       HAS_SIGNING: ${{ secrets.BUILD_CERTIFICATE_BASE64 != '' && secrets.BUILD_PROVISION_PROFILE_BASE64 != '' }}
     steps:
@@ -57,6 +57,12 @@ jobs:
           (cd build && zip -qry ../AudiLightStudio.xcarchive.zip AudiLightStudio.xcarchive)
           ls -la *.ipa *.zip
 
+      - name: Simulator screenshots and in-app checks
+        continue-on-error: true
+        run: |
+          ./ci/screenshots.sh
+          (cd ci-out && zip -qr ../AudiLightStudio-screenshots.zip screens selftest.txt) || true
+
       # Firma opzionale: si attiva solo se i secret sono configurati nel repository.
       # Nessun certificato o password è salvato nel codice.
       - name: Signed IPA (optional)
@@ -100,6 +106,7 @@ jobs:
         run: |
           FILES="AudiLightStudio-unsigned.ipa"
           if [ -f AudiLightStudio-signed.ipa ]; then FILES="$FILES AudiLightStudio-signed.ipa"; fi
+          if [ -f AudiLightStudio-screenshots.zip ]; then FILES="$FILES AudiLightStudio-screenshots.zip"; fi
           gh release delete latest --yes --cleanup-tag || true
           gh release create latest $FILES --prerelease --title "Audi Light Studio (ultima build)" \
             --notes "Build ${{ github.sha }}. IPA non firmato: installalo con Sideloadly, che lo firma con il tuo Apple ID." \

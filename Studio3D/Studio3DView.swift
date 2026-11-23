@@ -1,4 +1,5 @@
 import SwiftUI
+import simd
 import UniformTypeIdentifiers
 
 /// Mappa 3D / 3D Studio: modello dell'auto, LED mappati, selezione, filtri, allineamento.
@@ -34,11 +35,23 @@ struct Studio3DView: View {
         let name: String
     }
 
+    @State private var regKey = ""
+    @State private var regFit: LayoutRegistration.Fit?
+
     private var map: CarMap? { carMaps.active }
+
+    /// Copia dello stesso indirizzo più vicina (ramo opposto della Y).
+    private var twinID: UUID? {
+        guard let m = map, let id = selectedID, let led = m.leds.first(where: { $0.id == id }) else { return nil }
+        let p = m.carPosition(led)
+        return m.leds.filter { $0.key == led.key && $0.id != id }
+            .min { simd_distance(m.carPosition($0), p) < simd_distance(m.carPosition($1), p) }?.id
+    }
 
     var body: some View {
         let built = SceneContentBuilder.build(map: map, colors: player.colors, coloring: zoneMode ? .zone : coloring, filter: filter,
-                                              controllers: hub.controllers, selected: zoneMode ? nil : selectedID,
+                                              controllers: player.effectiveControllers, selected: zoneMode ? nil : selectedID,
+                                              twin: zoneMode ? nil : twinID,
                                               highlightIDs: zoneMode ? zoneSel : [], zones: zoneCache, model: model)
         ScrollView {
             VStack(spacing: 14) {
@@ -54,6 +67,19 @@ struct Studio3DView: View {
                         }
                         .frame(height: 420)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
+                        // In modifica zone: cornice menta e targhetta fissa, visibili anche mentre si ruota l'auto.
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.accent, lineWidth: zoneMode ? 2 : 0))
+                        .overlay(alignment: .bottom) {
+                            if zoneMode {
+                                Text("MODIFICA ZONE · \(zoneSel.count) selezionati")
+                                    .font(Theme.monoSmall.weight(.semibold)).foregroundStyle(.black)
+                                    .padding(.horizontal, 10).padding(.vertical, 5)
+                                    .background(Capsule().fill(Theme.accent))
+                                    .padding(10)
+                                    .allowsHitTesting(false)
+                                    .accessibilityIdentifier("zone-mode-banner")
+                            }
+                        }
                         VStack(alignment: .leading, spacing: 6) {
                             if model.isProvisional { Badge(text: "MODELLO PROVVISORIO — non è il modello fedele dell'A1", color: Theme.warning) }
                             if map?.isDemo == true { Badge(text: "MAPPA DIMOSTRATIVA — non è la tua auto", color: Theme.warning) }
@@ -86,6 +112,11 @@ struct Studio3DView: View {
         .screenBackground()
         .navigationTitle("Mappa 3D")
         .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                NavigationLink { Scan3DView() } label: { Label("Scansione", systemImage: "viewfinder") }
+                    .accessibilityIdentifier("map-scan")
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
             Menu {
                 ForEach(carMaps.maps) { m in
                     Button { carMaps.activeID = m.id; player.setMap(m) } label: {
@@ -105,6 +136,7 @@ struct Studio3DView: View {
                     Button(role: .destructive) { carMaps.delete(m.id); player.setMap(carMaps.active) } label: { Label("Elimina mappa attiva", systemImage: "trash") }
                 }
             } label: { Image(systemName: "map") }
+        }
         }
         .fileImporter(isPresented: $showImporter, allowedContentTypes: importKind == .layout
                       ? [.json, .data]
@@ -133,7 +165,15 @@ struct Studio3DView: View {
         } message: { Text(layoutError ?? "") }
         .sheet(isPresented: $showAlign) { AlignmentSheet() }
         .sheet(item: $shareItem) { ActivityView(items: [$0.url]) }
-        .onAppear { player.setMap(map); refreshZones() }
+        .onAppear {
+            player.setMap(map); refreshZones(); refreshRegistration()
+            if DebugLaunch.has("-ALSZoneMode"), !zoneMode, let m = map {
+                zoneMode = true
+                let list = player.effectiveControllers
+                if list.count > 1 { zoneSel = Set(m.leds.filter { $0.key.controller == list[1].id && $0.branch != "right" && (50...57).contains($0.key.pixel) }.map { $0.id }) }
+            }
+        }
+        .onChange(of: carMaps.maps.map { $0.alignment.yaw }) { _ in refreshRegistration() }
         .onChange(of: carMaps.activeID) { _ in zoneSel = []; refreshZones() }
     }
 
@@ -240,6 +280,15 @@ struct Studio3DView: View {
                 info("LED fisici", "\(m.leds.count)")
                 info("Pixel coperti", "\(cov.found) / \(cov.total)")
                 if let note = m.alignmentInfo { Text(note).font(.caption).foregroundStyle(Theme.textSecondary) }
+                if m.isMeasured {
+                    if let fit = regFit {
+                        info("Confronto col progetto", "\(fit.used)/\(fit.total) corrispondenze")
+                        info("Scarto medio", String(format: "%.1f cm", fit.rms * 100))
+                        if !fit.isGood { Text("Allineamento al progetto poco affidabile: controlla con \"Allinea al modello\".").font(.caption).foregroundStyle(Theme.warning) }
+                    } else {
+                        info("Confronto col progetto", "nessun pixel in comune")
+                    }
+                }
                 if m.isDesign {
                     Text("Posizioni prese dal progetto Blender: corrispondono all'auto solo se le strisce sono montate come nel progetto. Verifica con \"Accendi\" su alcuni LED; una scansione misura quelle vere.")
                         .font(.caption).foregroundStyle(Theme.textSecondary)
@@ -306,6 +355,17 @@ struct Studio3DView: View {
         let m = DemoLayout.make(controllers: hub.controllers)
         carMaps.save(m)
         player.setMap(m)
+    }
+
+    private func refreshRegistration() {
+        guard let m = map, m.isMeasured else { regFit = nil; regKey = ""; return }
+        let key = "\(m.id)-\(m.leds.count)-\(m.alignment.yaw)-\(m.alignment.scale)"
+        guard key != regKey else { return }
+        regKey = key
+        // Confronto pixel per pixel con le posizioni di progetto, nel sistema già allineato della mappa.
+        let design = ProjectLayout.designPoints(controllers: player.effectiveControllers) ?? []
+        let scanPts = m.leds.map { EffectPoint(key: $0.key, position: m.carPosition($0)) }
+        regFit = design.isEmpty ? nil : LayoutRegistration.fit(scan: scanPts, design: design)
     }
 
     private func refreshZones() {

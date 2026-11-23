@@ -5,7 +5,7 @@ struct HomeView: View {
     @EnvironmentObject var carMaps: CarMapStore
     @EnvironmentObject var player: EffectPlayer
     @EnvironmentObject var model: CarModelStore
-    @Binding var section: MainSection
+    @EnvironmentObject var ui: AppUIState
     @State private var camToken = 0
 
     var body: some View {
@@ -19,7 +19,7 @@ struct HomeView: View {
             .padding()
         }
         .screenBackground()
-        .navigationTitle("Audi Light Studio")
+        .navigationTitle("Panoramica")
         .onAppear { player.setMap(carMaps.active) }
     }
 
@@ -47,7 +47,7 @@ struct HomeView: View {
         Card(title: "Centraline", systemImage: "cpu") {
             if hub.controllers.isEmpty {
                 Text("Nessuna centralina configurata.").font(.subheadline).foregroundStyle(Theme.textSecondary)
-                Button("Aggiungi centraline") { section = .controllers }.buttonStyle(AccentButtonStyle())
+                Button("Aggiungi centraline") { ui.section = .controllers }.buttonStyle(AccentButtonStyle())
             } else {
                 HStack {
                     ForEach(hub.orderedLinks) { link in
@@ -93,10 +93,10 @@ struct HomeView: View {
 
     private var flowCard: some View {
         Card(title: "Flusso", systemImage: "arrow.triangle.turn.up.right.circle") {
-            step(1, "Collega le centraline", done: hub.allReady) { section = .controllers }
-            step(2, "Scansiona l'auto", done: carMaps.active.map { $0.isMeasured } ?? false) { section = .scan }
-            step(3, "Controlla la mappa 3D", done: false) { section = .map3D }
-            step(4, "Scegli un effetto, anteprima e Live", done: player.isPlaying) { section = .effects }
+            step(1, "Collega le centraline", done: hub.allReady) { ui.section = .controllers }
+            step(2, "Scansiona l'auto", done: carMaps.active.map { $0.isMeasured } ?? false) { ui.section = .map3D }
+            step(3, "Controlla la mappa 3D", done: false) { ui.section = .map3D }
+            step(4, "Scegli un effetto, anteprima e Live", done: player.isPlaying) { ui.section = .studio }
         }
     }
 

@@ -46,7 +46,7 @@ enum SceneContentBuilder {
     /// Converte mappa + colori correnti nel contenuto della scena 3D.
     /// Restituisce anche gli id dei LED fisici nello stesso ordine dei punti (per la selezione).
     static func build(map: CarMap?, colors: [LEDKey: RGB], coloring: LEDColoring, filter: LEDFilter,
-                      controllers: [ControllerConfig], highlight: Set<LEDKey> = [], selected: UUID? = nil,
+                      controllers: [ControllerConfig], highlight: Set<LEDKey> = [], selected: UUID? = nil, twin: UUID? = nil,
                       highlightIDs: Set<UUID> = [], zones: [UUID: AdaptiveEffects.Zone] = [:],
                       model: CarModelStore) -> (CarSceneContent, [UUID]) {
         var content = CarSceneContent()
@@ -66,7 +66,8 @@ enum SceneContentBuilder {
             }
             var c: RGB
             switch coloring {
-            case .effect: c = colors[led.key] ?? .black
+            // Nessun effetto ancora calcolato: punti grigi neutri, così si vede dove sono i LED.
+            case .effect: c = colors.isEmpty ? RGB(r: 118, g: 122, b: 128) : (colors[led.key] ?? .black)
             case .controller: c = ControllerPalette.rgb(tints[led.key.controller] ?? 0)
             case .confidence:
                 let k = min(max(led.confidence, 0), 1)
@@ -80,6 +81,7 @@ enum SceneContentBuilder {
             ids.append(led.id)
         }
         if let s = selected { content.selected = ids.firstIndex(of: s) }
+        if let t = twin { content.twin = ids.firstIndex(of: t) }
         return (content, ids)
     }
 }

@@ -26,9 +26,14 @@ final class EffectPlayer: ObservableObject {
     /// Animazione adattiva in riproduzione (60 preset calcolati sui punti della mappa attiva).
     @Published private(set) var clip: AdaptiveEffects.Preset?
     @Published var clipSettings = FramePack.Settings()
-    /// Posizione nell'animazione in secondi: accumula il tempo × velocità, così cambiare velocità non fa salti.
-    private var clipPosition = 0.0
+    /// Orologio dell'animazione: accumula tempo × velocità; la pausa conserva la posizione.
+    /// Aprire l'inspector o cambiare schermata non lo tocca.
+    private var clock = PlaybackClock()
+    /// Posizione corrente in secondi (per il trasporto e le verifiche).
+    @Published private(set) var playhead: Double = 0
     private var lastTick = CACurrentMediaTime()
+    /// Centraline usate dall'anteprima: configurate + quelle citate dalla mappa (lavoro offline).
+    @Published private(set) var effectiveControllers: [ControllerConfig] = []
     /// Campioni della mappa attiva per le animazioni adattive (zone dal progetto o dal punto di progetto più vicino).
     @Published private(set) var adaptive: AdaptiveEffects.Engine?
     private var map: CarMap?
@@ -54,13 +59,20 @@ final class EffectPlayer: ObservableObject {
         context = map.map { EffectContext(points: $0.effectPoints) }
         controllers = hub.controllers
         self.map = map
-        adaptive = map.flatMap { ProjectLayout.adaptiveEngine(map: $0, controllers: hub.controllers) }
+        effectiveControllers = ControllerResolver.effective(hub.controllers, map: map)
+        adaptive = map.flatMap { $0.adaptiveEngine(controllers: effectiveControllers, design: ProjectLayout.bundled?.points) }
         if !isPlaying, let program { renderPreview(program, at: 0) }
     }
 
     var hasMap: Bool { context?.points.isEmpty == false }
 
-    var time: Double { CACurrentMediaTime() - startTime }
+    var time: Double { clock.position }
+
+    /// C'è qualcosa da riprendere dopo una pausa.
+    var hasContent: Bool { clip != nil || program != nil }
+    var isPaused: Bool { hasContent && !isPlaying }
+    /// Durata del preset adattivo in riproduzione (nil per programmi e playlist, che non finiscono).
+    var duration: Double? { clip?.duration }
 
     // MARK: Controllo
 
@@ -84,7 +96,6 @@ final class EffectPlayer: ObservableObject {
     func play(clip p: AdaptiveEffects.Preset) {
         playlist = nil
         clip = p
-        clipPosition = 0
         start()
     }
 
@@ -97,21 +108,38 @@ final class EffectPlayer: ObservableObject {
     /// Fotogramma corrente dell'animazione adattiva, per pixel logico.
     private func clipColors() -> [LEDKey: RGB]? {
         guard let clip, let adaptive else { return nil }
-        let rows = adaptive.frame(clip, elapsed: clipPosition).map { $0.map { FramePack.adjust($0, clipSettings) } }
-        return FramePack.keyed(rows, controllers: hub.controllers)
+        let rows = adaptive.frame(clip, elapsed: clock.position).map { $0.map { FramePack.adjust($0, clipSettings) } }
+        return FramePack.keyed(rows, controllers: effectiveControllers)
     }
 
     func stop() {
         isPlaying = false
+        clock.pause()
         displayTimer?.invalidate()
         liveRunning = false
         hub.cancelAll()
     }
 
+    /// Pausa: ferma anteprima e invio, conserva preset e posizione.
+    func pause() { stop() }
+
+    /// Riprende dallo stesso punto.
+    func resume() {
+        guard hasContent, !isPlaying else { return }
+        clock.resume()
+        run()
+    }
+
     private func start() {
         startTime = CACurrentMediaTime()
         itemStart = startTime
-        lastTick = startTime
+        clock.start()
+        playhead = 0
+        run()
+    }
+
+    private func run() {
+        lastTick = CACurrentMediaTime()
         isPlaying = true
         displayTimer?.invalidate()
         displayTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in self?.tick() }
@@ -133,8 +161,10 @@ final class EffectPlayer: ObservableObject {
         let now = CACurrentMediaTime()
         let dt = min(now - lastTick, 0.5)
         lastTick = now
+        clock.speed = clip != nil ? clipSettings.clamped.speed : 1
+        clock.advance(dt)
+        playhead = clock.position
         if clip != nil {
-            clipPosition += dt * clipSettings.clamped.speed
             if mode == .preview, let c = clipColors() { colors = c }
             return
         }

@@ -4,7 +4,6 @@ struct PresetsView: View {
     @EnvironmentObject var library: EffectLibrary
     @EnvironmentObject var player: EffectPlayer
     @EnvironmentObject var carMaps: CarMapStore
-    @Binding var section: MainSection
     @State private var editingPlaylist: Playlist?
 
     var body: some View {
@@ -31,7 +30,8 @@ struct PresetsView: View {
                             Spacer()
                             Button { player.play(p) } label: { Image(systemName: "play.circle.fill").font(.title2) }
                                 .disabled(carMaps.active == nil)
-                            Button { player.update(p); player.play(p); section = .effects } label: { Image(systemName: "slider.horizontal.3") }
+                            NavigationLink { EffectsStudioView() } label: { Image(systemName: "slider.horizontal.3") }
+                                .simultaneousGesture(TapGesture().onEnded { player.update(p); player.play(p) })
                             Button(role: .destructive) { library.deleteProgram(p.id) } label: { Image(systemName: "trash") }
                                 .foregroundStyle(Theme.textSecondary)
                         }
