@@ -36,6 +36,12 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 
 Il firmware più vicino analizzato (TR2309) ha buffer da **400 LED** e scrive fuori memoria, in modo persistente, oltre quel limite. Un solo controller da 1600 LED non è dimostrato: probabilmente servono più centraline (es. 4 × 400). L'app non supera 400 finché non sarà dimostrato il contrario. Dettagli in [docs/PROTOCOL.md §5](docs/PROTOCOL.md).
 
+## Versione 2.8 — carrozzeria Audi A1 S-Line
+
+- `Resources/Audi_A1_LED1600.glb` e `.json` sostituiti con la versione S-Line (4,03 m, 486 mila triangoli, 1600 marcatori LED esclusi dalla geometria; mappa di progetto 4 × 200 indirizzi × 2 rami).
+- Lettore glTF: supporto KHR_materials_clearcoat (vernice), sorgenti geometriche senza copie intermedie; la vernice è riconosciuta dal materiale `…_Python_Yellow`.
+- **Credito**: “2021 Audi A1 S-Line” di tonielpro520 — https://sketchfab.com/3d-models/2021-audi-a1-s-line-da2cde1fa3574308877060c0c2d71f1d — licenza CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Modifiche: scala e orientamento, vernice grafite, mappa di progetto a LED. Il credito è mostrato in Mappa 3D e in Impostazioni.
+
 ## Versione 2.7 — correzione manuale delle zone
 
 - Mappa 3D → Visualizzazione → **Modifica zone**: tocchi uno o più punti (evidenziati in bianco, con il conteggio), "Assegna zona…" con le 9 zone degli effetti adattivi, "Ripristina zona automatica", "Completa la striscia tra i 2 punti" (segue il ramo della Y più vicino).

@@ -25,7 +25,7 @@ targets:
       path: App/Info.plist
       properties:
         CFBundleDisplayName: Audi Light Studio
-        CFBundleShortVersionString: "2.7.0"
+        CFBundleShortVersionString: "2.8.0"
         CFBundleVersion: "1"
         LSRequiresIPhoneOS: true
         UILaunchScreen: {}

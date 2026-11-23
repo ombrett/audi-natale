@@ -272,8 +272,9 @@ struct Studio3DView: View {
                 Text("Modello provvisorio con le dimensioni dell'Audi A1 Sportback 2020 (4,03 × 1,74 × 1,41 m). Per la forma reale importa un file GLB, USDZ o SCN di cui hai la licenza d'uso.")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
             } else if model.isProjectModel {
-                Text("Modello dal tuo progetto Blender (Audi_A1_LED1600.glb), nelle stesse coordinate del layout LED. Il colore si applica alla carrozzeria.")
+                Text("Audi A1 S-Line 2021 dal tuo progetto Blender, nelle stesse coordinate del layout LED. Il colore si applica alla carrozzeria.")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
+                ModelCredit()
             } else {
                 Text("Modello importato. Il colore viene applicato ai materiali chiamati \"paint\"/\"body\": se non cambia, il file usa nomi diversi.")
                     .font(.caption).foregroundStyle(Theme.textSecondary)
@@ -456,6 +457,21 @@ struct AlignmentSheet: View {
         VStack(alignment: .leading) {
             HStack { Text(title); Spacer(); Text(String(format: "%.2f", value.wrappedValue)).font(Theme.monoSmall) }
             Slider(value: value, in: range)
+        }
+    }
+}
+
+/// Credito obbligatorio (CC BY 4.0) della carrozzeria inclusa nell'app.
+struct ModelCredit: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text("Carrozzeria: “2021 Audi A1 S-Line” di tonielpro520, licenza CC BY 4.0. Modifiche: scala e orientamento, vernice grafite, mappa di progetto a LED.")
+                .font(.caption2).foregroundStyle(Theme.textSecondary)
+            HStack(spacing: 12) {
+                Link("Modello su Sketchfab", destination: URL(string: "https://sketchfab.com/3d-models/2021-audi-a1-s-line-da2cde1fa3574308877060c0c2d71f1d")!)
+                Link("Licenza CC BY 4.0", destination: URL(string: "https://creativecommons.org/licenses/by/4.0/")!)
+            }
+            .font(.caption2.weight(.semibold))
         }
     }
 }

@@ -530,8 +530,16 @@ if let data = FileManager.default.contents(atPath: "Resources/Audi_A1_LED1600.js
 if let data = FileManager.default.contents(atPath: "Resources/Audi_A1_LED1600.glb") {
     do {
         let m = try GLTFModel.load(data, skipNode: { $0.hasPrefix("LED_") })
-        check(m.skippedNodes == 1600 && m.triangleCount > 50_000, "progetto A1: modello letto senza i 1600 marcatori", "\(m.skippedNodes) \(m.triangleCount)")
-        check(abs(m.boundsMin.y) < 0.01 && abs(m.boundsMax.x - m.boundsMin.x - 4.12) < 0.05, "progetto A1: a terra, lungo ~4,1 m", "\(m.boundsMin) \(m.boundsMax)")
+        check(m.skippedNodes == 1600 && m.triangleCount > 400_000, "progetto A1 S-Line: modello letto senza i 1600 marcatori", "\(m.skippedNodes) \(m.triangleCount)")
+        check(abs(m.boundsMin.y) < 0.01 && abs(m.boundsMax.x - m.boundsMin.x - 4.03) < 0.05 && m.boundsMax.y < 1.45,
+              "progetto A1 S-Line: a terra, lungo ~4,03 m, alto ~1,40 m", "\(m.boundsMin) \(m.boundsMax)")
+        check(m.materials.contains { $0.name.contains("Python_Yellow") && $0.clearcoat > 0 } || m.materials.contains { $0.name.contains("Python_Yellow") },
+              "progetto A1 S-Line: vernice carrozzeria riconoscibile")
+        // Ogni LED del layout sta sulla carrozzeria del modello (entro 8 cm dal suo ingombro).
+        if let lay = FileManager.default.contents(atPath: "Resources/Audi_A1_LED1600.json").flatMap({ try? LEDLayoutImport.parse($0) }) {
+            let lo = SIMD3<Double>(m.boundsMin) - 0.08, hi = SIMD3<Double>(m.boundsMax) + 0.08
+            check(lay.points.allSatisfy { all($0.position .>= lo) && all($0.position .<= hi) }, "progetto A1 S-Line: LED del layout dentro l'ingombro del modello")
+        }
     } catch { check(false, "progetto A1: modello", "\(error)") }
 }
 

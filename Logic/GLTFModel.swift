@@ -15,6 +15,9 @@ enum GLTFModel {
         var emissiveStrength: Float = 1
         var doubleSided = false
         var blend = false
+        /// KHR_materials_clearcoat (vernice trasparente sopra il colore).
+        var clearcoat: Float = 0
+        var clearcoatRoughness: Float = 0
     }
 
     struct Part {
@@ -84,7 +87,7 @@ enum GLTFModel {
         let doc: Doc
         do { doc = try JSONDecoder().decode(Doc.self, from: jsonData) }
         catch { throw Failure.corrupt("JSON non valido") }
-        let supported: Set<String> = ["KHR_materials_emissive_strength"]
+        let supported: Set<String> = ["KHR_materials_emissive_strength", "KHR_materials_clearcoat"]
         if let req = doc.extensionsRequired?.first(where: { !supported.contains($0) }) { throw Failure.unsupported(req) }
         if let bufs = doc.buffers, bufs.count > 1 || bufs.first?.uri != nil {
             throw Failure.unsupported("buffer esterni")
@@ -164,6 +167,10 @@ enum GLTFModel {
             if let v = mt.pbrMetallicRoughness?.roughnessFactor { out.roughness = Float(v) } else { out.roughness = 1 }
             if let e = mt.emissiveFactor, e.count == 3 { out.emissive = SIMD3<Float>(e.map { Float($0) }) }
             if let s = mt.extensions?.KHR_materials_emissive_strength?.emissiveStrength { out.emissiveStrength = Float(s) }
+            if let cc = mt.extensions?.KHR_materials_clearcoat {
+                out.clearcoat = Float(min(max(cc.clearcoatFactor ?? 0, 0), 1))
+                out.clearcoatRoughness = Float(min(max(cc.clearcoatRoughnessFactor ?? 0, 0), 1))
+            }
             out.doubleSided = mt.doubleSided ?? false
             out.blend = (mt.alphaMode ?? "OPAQUE") == "BLEND"
             return out
@@ -303,7 +310,8 @@ enum GLTFModel {
             var roughnessFactor: Double?
         }
         struct Strength: Decodable { var emissiveStrength: Double? }
-        struct Extensions: Decodable { var KHR_materials_emissive_strength: Strength? }
+        struct Clearcoat: Decodable { var clearcoatFactor: Double?; var clearcoatRoughnessFactor: Double? }
+        struct Extensions: Decodable { var KHR_materials_emissive_strength: Strength?; var KHR_materials_clearcoat: Clearcoat? }
         struct Mat: Decodable {
             var name: String?
             var pbrMetallicRoughness: PBR?
