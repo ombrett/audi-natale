@@ -40,7 +40,7 @@ struct ControllersView: View {
                                 .foregroundStyle(link.isReady ? Theme.accent : Theme.textSecondary)
                             Circle().fill(link.isReady ? Theme.accent : (link.state.isBusy ? Theme.warning : Theme.surfaceHigh))
                                 .frame(width: 8, height: 8)
-                            Text(link.isReady ? "pronta" : (link.config.isPlaceholder ? "da associare" : link.state.label.lowercased()))
+                            Text(link.isReady ? "pronta" : (link.config.isPlaceholder ? "assoc." : (link.state.isBusy ? "…" : "offline")))
                                 .font(Theme.monoSmall).foregroundStyle(Theme.textSecondary).lineLimit(1).minimumScaleFactor(0.7)
                         }
                         .frame(maxWidth: .infinity)

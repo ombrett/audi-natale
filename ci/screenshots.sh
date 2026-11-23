@@ -36,6 +36,10 @@ shot 03-studio-zone 8 -ALSScreen studio -ALSStudioMode map -ALSSelect B:57:right
 shot 04-mappa3d-modifica-zone 9 -ALSScreen map3D -ALSZoneMode
 shot 05-centraline 6 -ALSScreen controllers
 shot 06-altro 5 -ALSScreen more
+shot 06b-impostazioni 5 -ALSScreen more -ALSPushSettings
+shot 06c-mappa3d 9 -ALSScreen map3D
+shot 06b-impostazioni 5 -ALSScreen more -ALSPushSettings
+shot 06c-mappa3d 9 -ALSScreen map3D
 # Verifiche nell'app vera
 xcrun simctl terminate "$UDID" "$BID" >/dev/null 2>&1 || true
 xcrun simctl launch --console-pty "$UDID" "$BID" -ALSScreen studio -ALSSelfTest > ci-out/selftest-console.log 2>&1 &

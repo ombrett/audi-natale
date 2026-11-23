@@ -78,7 +78,10 @@ struct CarSceneView: UIViewRepresentable {
         override init() {
             super.init()
             let cam = SCNCamera()
-            cam.fieldOfView = 45
+            // Campo visivo orizzontale fisso: l'auto occupa la stessa larghezza anche quando
+            // l'inspector riduce l'altezza della vista (stessa inquadratura alla chiusura).
+            cam.projectionDirection = .horizontal
+            cam.fieldOfView = 48
             cam.zNear = 0.05
             cam.zFar = 100
             cam.wantsHDR = true
@@ -92,15 +95,14 @@ struct CarSceneView: UIViewRepresentable {
             scene.lightingEnvironment.contents = CarMeshBuilder.environmentImage()
             scene.lightingEnvironment.intensity = 1.2
             let floor = SCNFloor()
-            floor.reflectivity = 0.12
-            floor.reflectionFalloffEnd = 2.5
+            floor.reflectivity = 0.03
+            floor.reflectionFalloffEnd = 1.2
             let fm = SCNMaterial()
-            fm.lightingModel = .physicallyBased
+            fm.lightingModel = .constant
             fm.diffuse.contents = Coordinator.gridImage()
             fm.diffuse.wrapS = .repeat
             fm.diffuse.wrapT = .repeat
-            fm.diffuse.contentsTransform = SCNMatrix4MakeScale(12, 12, 1)   // griglia da 0,5 m
-            fm.roughness.contents = 0.75
+            fm.diffuse.contentsTransform = SCNMatrix4MakeScale(36, 36, 1)   // griglia fitta e discreta
             floor.materials = [fm]
             scene.rootNode.addChildNode(SCNNode(geometry: floor))
 
@@ -137,9 +139,9 @@ struct CarSceneView: UIViewRepresentable {
         static func gridImage() -> UIImage {
             let size = CGSize(width: 64, height: 64)
             return UIGraphicsImageRenderer(size: size).image { ctx in
-                UIColor(red: 0.05, green: 0.056, blue: 0.066, alpha: 1).setFill()
+                UIColor(Theme.background).setFill()
                 ctx.fill(CGRect(origin: .zero, size: size))
-                UIColor(white: 1, alpha: 0.07).setFill()
+                UIColor(white: 1, alpha: 0.045).setFill()
                 ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 1))
                 ctx.fill(CGRect(x: 0, y: 0, width: 1, height: 64))
             }

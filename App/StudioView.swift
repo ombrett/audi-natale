@@ -144,8 +144,10 @@ struct StudioView: View {
                 HStack(spacing: 5) { Circle().fill(ZonePalette.color(z)).frame(width: 7, height: 7); Text(z.label).font(.system(size: 10)) }
             }
         }
-        .padding(10)
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.background.opacity(0.8)))
         .frame(maxWidth: 260)
+        .padding(8)
     }
 
     // MARK: Origine delle posizioni
@@ -158,7 +160,8 @@ struct StudioView: View {
             if src == .design { Text("· posizioni previste").font(.caption).foregroundStyle(Theme.textSecondary) }
             if src == .demo { Text("· non è la tua auto").font(.caption).foregroundStyle(Theme.warning) }
             Spacer()
-            Text("\(fmt(map?.leds.count ?? 0)) punti · \(fmt(addresses)) ind.").font(Theme.monoBody).foregroundStyle(Theme.textSecondary)
+            Text("\(fmt(map?.leds.count ?? 0)) punti · \(fmt(addresses)) indirizzi").font(Theme.monoSmall).foregroundStyle(Theme.textSecondary)
+                .lineLimit(1).minimumScaleFactor(0.8)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
@@ -188,14 +191,15 @@ struct StudioView: View {
                 .accessibilityIdentifier("studio-play")
                 Button { ui.showPresetPicker = true } label: {
                     HStack(spacing: 4) {
-                        Text(presetName).font(.system(size: 17, weight: .medium)).lineLimit(1)
+                        Text(presetName).font(.system(size: 17, weight: .medium)).lineLimit(1).minimumScaleFactor(0.8)
                         Image(systemName: "chevron.up.chevron.down").font(.system(size: 11)).foregroundStyle(Theme.textSecondary)
                     }
                 }
                 .buttonStyle(.plain)
+                .layoutPriority(1)
                 .accessibilityIdentifier("studio-preset")
-                ProgressBar(value: progress).frame(height: 4)
-                Text(String(format: "%05.1f s", player.playhead).replacingOccurrences(of: ".", with: ","))
+                ProgressBar(value: progress).frame(minWidth: 50, maxHeight: 4)
+                Text(String(format: "%04.1f s", player.playhead).replacingOccurrences(of: ".", with: ","))
                     .font(Theme.monoBody).foregroundStyle(Theme.textSecondary)
                     .accessibilityIdentifier("studio-playhead")
             }
@@ -356,6 +360,7 @@ struct InspectorPanel: View {
                  ? "Cerchio pieno: punto toccato · anello: copia sul ramo opposto. Stesso indirizzo, stesso RGB inviato; zona e posizione possono essere diverse."
                  : "Indirizzo con un solo punto rilevato in questa mappa.")
                 .font(.caption2).foregroundStyle(Theme.textSecondary).padding(.top, 8)
+                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)

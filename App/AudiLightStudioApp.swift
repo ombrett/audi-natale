@@ -35,6 +35,11 @@ struct AudiLightStudioApp: App {
         _library = StateObject(wrappedValue: library)
         _player = StateObject(wrappedValue: player)
 
+        // Su iOS 26 l'aspetto personalizzato nasconde i titoli: si usa quello di sistema (già scuro).
+        if #unavailable(iOS 26) { Self.styleNavigationBar() }
+    }
+
+    private static func styleNavigationBar() {
         let nav = UINavigationBarAppearance()
         nav.configureWithOpaqueBackground()
         nav.backgroundColor = UIColor(Theme.background)

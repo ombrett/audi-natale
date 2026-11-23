@@ -2,6 +2,7 @@ import SwiftUI
 
 /// "Altro": tutto ciò che non sta in Studio, Mappa 3D e Centraline, senza perdere nessuna funzione.
 struct MoreView: View {
+    @State private var pushSettings = DebugLaunch.has("-ALSPushSettings")
     var body: some View {
         List {
             Section {
@@ -20,6 +21,7 @@ struct MoreView: View {
         .scrollContentBackground(.hidden)
         .background(Theme.background)
         .navigationTitle("Altro")
+        .navigationDestination(isPresented: $pushSettings) { SettingsView() }
     }
 
     private func row(_ title: String, _ subtitle: String, _ icon: String) -> some View {

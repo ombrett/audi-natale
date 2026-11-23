@@ -125,12 +125,12 @@ enum CameraPreset: String, CaseIterable, Identifiable {
     }
     var position: SCNVector3 {
         switch self {
-        case .iso: return SCNVector3(5.2, 3.0, 5.0)
-        case .front: return SCNVector3(7, 1.2, 0)
-        case .rear: return SCNVector3(-7, 1.2, 0)
-        case .left: return SCNVector3(0, 1.2, -7)
-        case .right: return SCNVector3(0, 1.2, 7)
-        case .top: return SCNVector3(0.01, 9, 0)
+        case .iso: return SCNVector3(3.9, 2.1, 3.7)
+        case .front: return SCNVector3(5.0, 1.2, 0)
+        case .rear: return SCNVector3(-5.0, 1.2, 0)
+        case .left: return SCNVector3(0, 1.2, -5.4)
+        case .right: return SCNVector3(0, 1.2, 5.4)
+        case .top: return SCNVector3(0.01, 6.5, 0)
         }
     }
 }
