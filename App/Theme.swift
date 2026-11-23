@@ -143,7 +143,7 @@ struct SpecRow<Trailing: View>: View {
                 Spacer(minLength: 12)
                 trailing
             }
-            .padding(.vertical, 11)
+            .padding(.vertical, 9)
             Hairline()
         }
     }

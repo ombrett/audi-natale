@@ -37,9 +37,9 @@ struct StudioView: View {
                 AxisGizmo(axes: axes).padding(14)
                 cameraMenu.padding(10).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                 if map == nil { emptyState }
-                if ui.studioMode == .map { zoneLegend.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading) }
             }
             .frame(maxHeight: .infinity)
+            if ui.studioMode == .map { Hairline(); zoneLegend }
             Hairline()
             sourceRow
             Hairline()
@@ -139,15 +139,15 @@ struct StudioView: View {
     }
 
     private var zoneLegend: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 116), alignment: .leading)], spacing: 4) {
-            ForEach(AdaptiveEffects.Zone.allCases, id: \.self) { z in
-                HStack(spacing: 5) { Circle().fill(ZonePalette.color(z)).frame(width: 7, height: 7); Text(z.label).font(.system(size: 10)) }
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 14) {
+                ForEach(AdaptiveEffects.Zone.allCases, id: \.self) { z in
+                    HStack(spacing: 5) { Circle().fill(ZonePalette.color(z)).frame(width: 7, height: 7); Text(z.label).font(.system(size: 11)) }
+                }
             }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 8)
         }
-        .padding(8)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Theme.background.opacity(0.8)))
-        .frame(maxWidth: 260)
-        .padding(8)
     }
 
     // MARK: Origine delle posizioni
@@ -199,7 +199,7 @@ struct StudioView: View {
                 .layoutPriority(1)
                 .accessibilityIdentifier("studio-preset")
                 ProgressBar(value: progress).frame(minWidth: 50, maxHeight: 4)
-                Text(String(format: "%04.1f s", player.playhead).replacingOccurrences(of: ".", with: ","))
+                Text(String(format: "%04.1f s", shownTime).replacingOccurrences(of: ".", with: ","))
                     .font(Theme.monoBody).foregroundStyle(Theme.textSecondary)
                     .accessibilityIdentifier("studio-playhead")
             }
@@ -250,6 +250,12 @@ struct StudioView: View {
         if let pl = player.playlist { return "Playlist · \(pl.name)" }
         if let p = player.program { return p.name }
         return "Scegli un preset"
+    }
+
+    /// Tempo mostrato: dentro la durata del preset (i preset in loop ripartono, gli altri restano alla fine).
+    private var shownTime: Double {
+        guard let c = player.clip else { return player.playhead }
+        return AdaptiveEffects.Engine.phase(c, elapsed: player.playhead) * c.duration
     }
 
     private var progress: Double {
@@ -319,8 +325,8 @@ struct InspectorPanel: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("inspector-close")
             }
-            .padding(.bottom, 6)
-            SpecRow("Centralina", value: info.controllerName)
+            .padding(.bottom, 2)
+            Text(info.controllerName).font(Theme.monoSmall).foregroundStyle(Theme.textSecondary).padding(.bottom, 4)
             SpecRow("Ramo", value: info.branch.rawValue + (info.copies > 1 ? "" : " · copia unica"))
             SpecRow(title: "Zona") {
                 Menu {
@@ -356,14 +362,12 @@ struct InspectorPanel: View {
                     Text("— nessun effetto").font(Theme.monoBody).foregroundStyle(Theme.textSecondary)
                 }
             }
-            Text(info.copies > 1
-                 ? "Cerchio pieno: punto toccato · anello: copia sul ramo opposto. Stesso indirizzo, stesso RGB inviato; zona e posizione possono essere diverse."
-                 : "Indirizzo con un solo punto rilevato in questa mappa.")
-                .font(.caption2).foregroundStyle(Theme.textSecondary).padding(.top, 8)
-                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+            Text(info.copies > 1 ? "● punto toccato · ○ copia sul ramo opposto · stesso RGB inviato" : "Un solo punto rilevato per questo indirizzo")
+                .font(.caption2).foregroundStyle(Theme.textSecondary).padding(.top, 6).lineLimit(1).minimumScaleFactor(0.8)
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
         .background(Theme.surface)
     }
 }

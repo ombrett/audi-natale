@@ -100,9 +100,10 @@ struct CarSceneView: UIViewRepresentable {
             let fm = SCNMaterial()
             fm.lightingModel = .constant
             fm.diffuse.contents = Coordinator.gridImage()
+            fm.diffuse.mipFilter = .linear
             fm.diffuse.wrapS = .repeat
             fm.diffuse.wrapT = .repeat
-            fm.diffuse.contentsTransform = SCNMatrix4MakeScale(36, 36, 1)   // griglia fitta e discreta
+            fm.diffuse.contentsTransform = SCNMatrix4MakeScale(24, 24, 1)   // griglia fitta e discreta
             floor.materials = [fm]
             scene.rootNode.addChildNode(SCNNode(geometry: floor))
 
@@ -137,13 +138,13 @@ struct CarSceneView: UIViewRepresentable {
 
         /// Texture della griglia del pavimento (linee sottili su grafite).
         static func gridImage() -> UIImage {
-            let size = CGSize(width: 64, height: 64)
+            let size = CGSize(width: 128, height: 128)
             return UIGraphicsImageRenderer(size: size).image { ctx in
                 UIColor(Theme.background).setFill()
                 ctx.fill(CGRect(origin: .zero, size: size))
                 UIColor(white: 1, alpha: 0.045).setFill()
-                ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 1))
-                ctx.fill(CGRect(x: 0, y: 0, width: 1, height: 64))
+                ctx.fill(CGRect(x: 0, y: 0, width: 128, height: 1))
+                ctx.fill(CGRect(x: 0, y: 0, width: 1, height: 128))
             }
         }
 
