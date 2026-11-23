@@ -804,23 +804,23 @@ clk.advance(3)
 check(clk.position == 2.5, "orologio: passo massimo 0,5 s (niente salti dopo un blocco)")
 check(controllerLetter(0) == "A" && controllerLetter(3) == "D", "lettere centraline")
 
-let rA = ControllerConfig(name: "Pacco A", bleName: "", ledCount: 200, order: 0)
-let rB = ControllerConfig(name: "Pacco B", bleName: "", ledCount: 200, order: 1)
-let rKeyL = LEDKey(controller: rB.id, pixel: 57)
+let rdA = ControllerConfig(name: "Pacco A", bleName: "", ledCount: 200, order: 0)
+let rdB = ControllerConfig(name: "Pacco B", bleName: "", ledCount: 200, order: 1)
+let rKeyL = LEDKey(controller: rdB.id, pixel: 57)
 var rMap = CarMap(name: "Profilo", leds: [
     PhysicalLED(key: rKeyL, world: SIMD3(1.5, 0.9, -0.4), confidence: 1, views: 0, part: "cofano", branch: "left"),
     PhysicalLED(key: rKeyL, world: SIMD3(1.5, 0.9, 0.4), confidence: 1, views: 0, part: "cofano", branch: "right"),
-    PhysicalLED(key: LEDKey(controller: rA.id, pixel: 3), world: SIMD3(-1.0, 1.3, -0.2), confidence: 1, views: 0, part: "tetto", branch: "left"),
+    PhysicalLED(key: LEDKey(controller: rdA.id, pixel: 3), world: SIMD3(-1.0, 1.3, -0.2), confidence: 1, views: 0, part: "tetto", branch: "left"),
 ])
 rMap.source = "design"
 let offline = ControllerResolver.effective([], map: rMap)
 check(offline.count == 2 && offline.allSatisfy { $0.ledCount >= 1 }, "offline: centraline ricavate dalla mappa del profilo", "\(offline.map { $0.ledCount })")
-check(ControllerResolver.effective([rA, rB], map: rMap).map { $0.id } == [rA.id, rB.id], "offline: con centraline configurate non aggiunge nulla")
+check(ControllerResolver.effective([rdA, rdB], map: rMap).map { $0.id } == [rdA.id, rdB.id], "offline: con centraline configurate non aggiunge nulla")
 check(MapSource(rMap) == .design && MapSource(nil) == .none, "origine posizioni: progetto / nessuna")
 
 let lID = rMap.leds[0].id, rID = rMap.leds[1].id
 let colorsNow: [LEDKey: RGB] = [rKeyL: RGB(r: 120, g: 234, b: 193)]
-if let ins = LEDInspection.make(map: rMap, ledID: lID, controllers: [rA, rB], colors: colorsNow, design: nil) {
+if let ins = LEDInspection.make(map: rMap, ledID: lID, controllers: [rdA, rdB], colors: colorsNow, design: nil) {
     check(ins.addressLabel == "B/57" && ins.branch == .left && ins.twinID == rID && ins.copies == 2, "inspector: B/57, ramo sinistro, copia sul ramo opposto")
     check(ins.zone == .cofano && ins.origin == .layout && ins.rgb == RGB(r: 120, g: 234, b: 193) && Theme_hexTest(ins.rgb!) == "#78EAC1",
           "inspector: zona automatica dal progetto e RGB corrente")
@@ -830,19 +830,19 @@ rMap.setZone(.fiancata_anteriore, for: [lID])
 let rURL = FileManager.default.temporaryDirectory.appendingPathComponent("profilo-\(UUID().uuidString).json")
 try? CarMapArchive.save([rMap], to: rURL)
 if let back = CarMapArchive.load(rURL).first {
-    let insL = LEDInspection.make(map: back, ledID: lID, controllers: [rA, rB], colors: colorsNow, design: nil)
-    let insR = LEDInspection.make(map: back, ledID: rID, controllers: [rA, rB], colors: colorsNow, design: nil)
+    let insL = LEDInspection.make(map: back, ledID: lID, controllers: [rdA, rdB], colors: colorsNow, design: nil)
+    let insR = LEDInspection.make(map: back, ledID: rID, controllers: [rdA, rdB], colors: colorsNow, design: nil)
     check(insL?.zone == .fiancata_anteriore && insL?.origin == .manual && insR?.zone == .cofano && insR?.origin == .layout,
           "percorso B/57: sinistro manuale, destro conserva la propria zona dopo la riapertura")
     check(insL?.rgb != nil && insL?.rgb == insR?.rgb, "percorso B/57: i due punti mostrano lo stesso colore finale")
-    let eng = back.adaptiveEngine(controllers: [rA, rB], design: nil)!
+    let eng = back.adaptiveEngine(controllers: [rdA, rdB], design: nil)!
     let bp = AdaptiveEffects.preset("blueprint")!
     var oneRGB = true
     for n in 0..<48 {
         let rows = eng.frame(bp, elapsed: Double(n) / 24)
         if rows.count != 2 || rows[1].count != 200 { oneRGB = false }
-        let split = FrameSplitter.split(FramePack.keyed(rows, controllers: [rA, rB]), controllers: [rA, rB])
-        if split[rB.id]?.count != 200 { oneRGB = false }
+        let split = FrameSplitter.split(FramePack.keyed(rows, controllers: [rdA, rdB]), controllers: [rdA, rdB])
+        if split[rdB.id]?.count != 200 { oneRGB = false }
     }
     check(oneRGB && eng.addresses[1][57].map { $0.zone } == [.fiancata_anteriore, .cofano], "percorso B/57: un solo RGB per indirizzo, zone per punto")
 } else { check(false, "percorso B/57: riapertura") }
@@ -850,7 +850,7 @@ try? FileManager.default.removeItem(at: rURL)
 // Scansione parziale: meno di 1.600 punti, indirizzi mancanti spenti, numerazione invariata.
 var partialLEDs: [PhysicalLED] = []
 for px in 0..<30 where !(10...19).contains(px) {
-    partialLEDs.append(PhysicalLED(key: LEDKey(controller: rA.id, pixel: px), world: SIMD3(-1.0 + Double(px) * 0.05, 1.3, -0.2), confidence: 1, views: 2))
+    partialLEDs.append(PhysicalLED(key: LEDKey(controller: rdA.id, pixel: px), world: SIMD3(-1.0 + Double(px) * 0.05, 1.3, -0.2), confidence: 1, views: 2))
 }
 let partialMap = CarMap(name: "Parziale", leds: partialLEDs)
 let pEng = partialMap.adaptiveEngine(controllers: ControllerResolver.effective([], map: partialMap), design: nil)!
