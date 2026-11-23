@@ -119,7 +119,7 @@ struct CarSceneView: UIViewRepresentable {
             scene.rootNode.addChildNode(ledNode)
             // Punto toccato: cerchio pieno; copia sul ramo opposto: anello vuoto. Sempre rivolti alla camera.
             let mint = SCNMaterial(); mint.lightingModel = .constant
-            mint.diffuse.contents = UIColor(red: 0.30, green: 0.80, blue: 0.62, alpha: 1)   // menta sotto la soglia del bloom
+            mint.diffuse.contents = UIColor(red: 0.82, green: 0.16, blue: 0.22, alpha: 1)   // rosso d'accento, sotto la soglia del bloom
             mint.readsFromDepthBuffer = false
             let disc = SCNCylinder(radius: 0.028, height: 0.001); disc.materials = [mint]
             let discNode = SCNNode(geometry: disc); discNode.eulerAngles.x = .pi / 2

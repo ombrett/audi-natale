@@ -1,19 +1,21 @@
 import SwiftUI
 
-/// Tema tecnico: fondo grafite, testo chiaro, separatori sottili, un solo accento menta
-/// (selezione e azioni attive). Ambra e rosso solo per avvisi ed errori veri.
+/// Tema tecnico: fondo grafite, testo chiaro, separatori sottili, un solo accento rosso
+/// (selezione e azioni attive). Ambra e arancio solo per avvisi ed errori veri.
 enum Theme {
     static let background = Color(red: 0.055, green: 0.063, blue: 0.075)      // #0E1013
     static let surface = Color(red: 0.086, green: 0.094, blue: 0.110)         // #16181C
     static let surfaceHigh = Color(red: 0.125, green: 0.137, blue: 0.157)     // #202328
     static let stroke = Color.white.opacity(0.09)
-    static let accent = Color(red: 0.471, green: 0.918, blue: 0.757)          // #78EAC1 menta
-    static let accentDim = Color(red: 0.471, green: 0.918, blue: 0.757).opacity(0.14)
+    static let accent = Color(red: 0.910, green: 0.188, blue: 0.247)          // #E8303F rosso
+    static let accentDim = Color(red: 0.910, green: 0.188, blue: 0.247).opacity(0.16)
+    /// Testo sopra un fondo pieno nel colore d'accento.
+    static let onAccent = Color.white
     static let textPrimary = Color.white.opacity(0.94)
     static let textSecondary = Color.white.opacity(0.55)
     static let ok = accent
     static let warning = Color(red: 1.0, green: 0.72, blue: 0.2)
-    static let danger = Color(red: 1.0, green: 0.33, blue: 0.33)
+    static let danger = Color(red: 1.0, green: 0.48, blue: 0.27)              // arancio: distinto dall'accento
 
     static let mono = Font.system(.caption, design: .monospaced)
     static let monoSmall = Font.system(size: 11, design: .monospaced)
@@ -106,7 +108,7 @@ struct AccentButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(filled ? color.opacity(configuration.isPressed ? 0.7 : 1) : color.opacity(0.14))
             )
-            .foregroundStyle(filled ? Color.black : color)
+            .foregroundStyle(filled ? Theme.onAccent : color)
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }

@@ -385,7 +385,7 @@ struct ProgressBar: View {
     }
 }
 
-/// Pulsante a segmento: menta pieno solo se attivo.
+/// Pulsante a segmento: accento pieno solo se attivo.
 struct SegmentStyle: ButtonStyle {
     var active: Bool
     func makeBody(configuration: Configuration) -> some View {

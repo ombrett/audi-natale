@@ -67,12 +67,12 @@ struct Studio3DView: View {
                         }
                         .frame(height: 420)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
-                        // In modifica zone: cornice menta e targhetta fissa, visibili anche mentre si ruota l'auto.
+                        // In modifica zone: cornice rossa e targhetta fissa, visibili anche mentre si ruota l'auto.
                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.accent, lineWidth: zoneMode ? 2 : 0))
                         .overlay(alignment: .bottom) {
                             if zoneMode {
                                 Text("MODIFICA ZONE · \(zoneSel.count) selezionati")
-                                    .font(Theme.monoSmall.weight(.semibold)).foregroundStyle(.black)
+                                    .font(Theme.monoSmall.weight(.semibold)).foregroundStyle(Theme.onAccent)
                                     .padding(.horizontal, 10).padding(.vertical, 5)
                                     .background(Capsule().fill(Theme.accent))
                                     .padding(10)

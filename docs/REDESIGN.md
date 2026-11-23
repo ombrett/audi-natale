@@ -15,7 +15,7 @@ Profili, mappe, scansioni, correzioni di zona, effetti e playlist salvati usano 
 | Mappa 3D › viste camera (3/4, Davanti, Dietro, Sinistra, Destra, Alto) | Mappa 3D (invariato); Studio › pulsante camera sulla scena |
 | Mappa 3D › tocco su un LED: dettagli, Accendi, riassegna, elimina | Mappa 3D › scheda selezione (invariata) + **anello** sulla copia a Y |
 | Mappa 3D › Visualizzazione (Effetto/Centralina/Affidabilità/Zona, filtri) | Mappa 3D › Visualizzazione (invariata) |
-| Mappa 3D › Modifica zone: selezione multipla, Completa striscia tra 2 punti, Assegna zona, Ripristina automatica | Mappa 3D › Modifica zone (invariata) + **cornice menta e targhetta "MODIFICA ZONE · n selezionati"** fisse sulla scena mentre si ruota |
+| Mappa 3D › Modifica zone: selezione multipla, Completa striscia tra 2 punti, Assegna zona, Ripristina automatica | Mappa 3D › Modifica zone (invariata) + **cornice rossa e targhetta "MODIFICA ZONE · n selezionati"** fisse sulla scena mentre si ruota |
 | Mappa 3D › Allinea al modello (per progetto / per forma / inverti) | Mappa 3D › Mappa › Allinea al modello (invariato) |
 | Esito allineamento automatico | Mappa 3D › Mappa: testo + **"Confronto col progetto: n/N corrispondenze" e "Scarto medio: x cm"** |
 | Mappa 3D › modello (progetto S-Line, importa GLB/USDZ/SCN, rotazione, colore carrozzeria, crediti) | Mappa 3D › Modello (invariato) |
