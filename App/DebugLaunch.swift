@@ -170,10 +170,16 @@ final class SelfTest {
         carMaps.save(scan)
         carMaps.activeID = scan.id
         player.setMap(scan)
-        after(0.8) { [self] in
+        checkPartial(scan: scan, previous: previous, attempt: 0)
+    }
+
+    /// Ripete il controllo finché l'anteprima ha calcolato un fotogramma sulla nuova mappa (max ~4 s).
+    private func checkPartial(scan: CarMap, previous: UUID?, attempt: Int) {
+        after(0.4) { [self] in
             let list = player.effectiveControllers
             guard list.count > 1, let eng = player.adaptive else { report("partial_scan", false, "motore non pronto"); return finish() }
             let missing = (10...19).allSatisfy { eng.addresses[0][$0].isEmpty && (player.colors[LEDKey(controller: list[0].id, pixel: $0)] ?? .black) == .black }
+            if !missing && attempt < 10 { return checkPartial(scan: scan, previous: previous, attempt: attempt + 1) }
             let kept = eng.addresses[0][20].first?.i == 20 && eng.addresses[1][100].count == 1 && eng.addresses[1][99].count == 2
             report("partial_scan", missing && kept && scan.leds.count < 1600,
                    "\(scan.leds.count) punti; A/10–19 spenti: \(missing); A/20 resta indice 20 e B/100 con un solo punto: \(kept)")
