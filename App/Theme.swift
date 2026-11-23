@@ -152,6 +152,6 @@ struct SpecRow<Trailing: View>: View {
 extension SpecRow where Trailing == Text {
     init(_ title: String, value: String) {
         self.title = title
-        self.trailing = Text(value).font(Theme.monoBody).foregroundStyle(Theme.textPrimary)
+        self.trailing = Text(value).font(Theme.monoBody).foregroundColor(Theme.textPrimary)
     }
 }
