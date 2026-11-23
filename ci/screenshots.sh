@@ -35,8 +35,7 @@ shot 02-studio-inspector 8 -ALSScreen studio -ALSPlay ice_scan -ALSSelect B:57:l
 shot 03-studio-zone 8 -ALSScreen studio -ALSStudioMode map -ALSSelect B:57:right
 shot 04-mappa3d-modifica-zone 9 -ALSScreen map3D -ALSZoneMode
 shot 05-centraline 6 -ALSScreen controllers
-shot 06-altro 5 -ALSScreen more
-shot 06b-impostazioni 8 -ALSScreen more -ALSPushSettings
+shot 06-altro 9 -ALSScreen more
 shot 06c-mappa3d 9 -ALSScreen map3D
 shot 06b-impostazioni 8 -ALSScreen more -ALSPushSettings
 shot 06c-mappa3d 9 -ALSScreen map3D

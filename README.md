@@ -36,6 +36,15 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 
 Il firmware più vicino analizzato (TR2309) ha buffer da **400 LED** e scrive fuori memoria, in modo persistente, oltre quel limite. Un solo controller da 1600 LED non è dimostrato: probabilmente servono più centraline (es. 4 × 400). L'app non supera 400 finché non sarà dimostrato il contrario. Dettagli in [docs/PROTOCOL.md §5](docs/PROTOCOL.md).
 
+## Versione 3.0 — redesign Studio
+
+- Navigazione: **Studio · Mappa 3D · Centraline · Altro**. Tabella completa "funzione → nuova posizione" in `docs/REDESIGN.md`.
+- Studio: A1 grande e ruotabile (campo visivo orizzontale fisso, griglia, gizmo assi), origine delle posizioni (progetto/scansione/dimostrativa), stato centraline, trasporto con play/pausa, preset a un tocco, **Anteprima** e **Invia all'auto** separati, modalità Mappa con zone.
+- Inspector del LED toccato: indirizzo (`B / 057`), ramo, zona con origine (manuale/automatica), RGB corrente; cerchio pieno sul punto, anello sulla copia a Y; cambio zona del singolo punto senza fermare la riproduzione.
+- Mappa 3D: confronto col progetto (corrispondenze, scarto in cm), cornice e targhetta fisse in modifica zone, collegamento alla scansione.
+- Centraline: A B C D con stato reale, offline/parziale/Bluetooth spento/disconnessione durante il Live. Offline l'anteprima usa le centraline citate dalla mappa del profilo.
+- Verifiche: test logici (`Tests/main.swift`) e verifiche nell'app sul simulatore (`ci/screenshots.sh`, argomento `-ALSSelfTest`), con screenshot pubblicati nella release.
+
 ## Versione 2.9 — layout S-Line corretto
 
 - Layout rigenerato sulla carrozzeria S-Line: nessun LED né tratto di striscia su vetri, fari, stop, targa, griglia, specchi o ruote (striscia ad almeno 17 mm); ogni zona sta su un solo pannello (porte, cofano e portellone apribili hanno la loro sezione); passo massimo 10 cm tra LED consecutivi lungo la striscia; tagli con prolunga dichiarati nel file (`lead_before_m`).

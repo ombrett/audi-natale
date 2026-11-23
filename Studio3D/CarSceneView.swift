@@ -81,6 +81,7 @@ struct CarSceneView: UIViewRepresentable {
             // Campo visivo orizzontale fisso: l'auto occupa la stessa larghezza anche quando
             // l'inspector riduce l'altezza della vista (stessa inquadratura alla chiusura).
             cam.projectionDirection = .horizontal
+            cam.wantsExposureAdaptation = false
             cam.fieldOfView = 48
             cam.zNear = 0.05
             cam.zFar = 100
@@ -117,7 +118,8 @@ struct CarSceneView: UIViewRepresentable {
 
             scene.rootNode.addChildNode(ledNode)
             // Punto toccato: cerchio pieno; copia sul ramo opposto: anello vuoto. Sempre rivolti alla camera.
-            let mint = SCNMaterial(); mint.lightingModel = .constant; mint.diffuse.contents = UIColor(Theme.accent)
+            let mint = SCNMaterial(); mint.lightingModel = .constant
+            mint.diffuse.contents = UIColor(red: 0.30, green: 0.80, blue: 0.62, alpha: 1)   // menta sotto la soglia del bloom
             mint.readsFromDepthBuffer = false
             let disc = SCNCylinder(radius: 0.028, height: 0.001); disc.materials = [mint]
             let discNode = SCNNode(geometry: disc); discNode.eulerAngles.x = .pi / 2
