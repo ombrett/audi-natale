@@ -797,11 +797,11 @@ if let pr = try? LEDLayoutImport.parse(Data(pitchJSON.utf8)) {
 func Theme_hexTest(_ c: RGB) -> String { String(format: "#%02X%02X%02X", c.r, c.g, c.b) }
 // MARK: Redesign 3.0 — Studio, inspector, lavoro offline
 var clk = PlaybackClock()
-clk.start(); clk.advance(1.0); clk.pause(); clk.advance(5); let pausedAt = clk.position
+clk.start(); clk.advance(0.4); clk.advance(0.4); clk.pause(); clk.advance(5); let pausedAt = clk.position
 clk.resume(); clk.speed = 2; clk.advance(0.25)
-check(pausedAt == 1.0 && clk.position == 1.5, "orologio: la pausa conserva la posizione, la ripresa continua")
+check(abs(pausedAt - 0.8) < 1e-9 && abs(clk.position - 1.3) < 1e-9, "orologio: la pausa conserva la posizione, la ripresa continua", "\(pausedAt) \(clk.position)")
 clk.advance(3)
-check(clk.position == 2.5, "orologio: passo massimo 0,5 s (niente salti dopo un blocco)")
+check(abs(clk.position - 2.3) < 1e-9, "orologio: passo massimo 0,5 s (niente salti dopo un blocco)", "\(clk.position)")
 check(controllerLetter(0) == "A" && controllerLetter(3) == "D", "lettere centraline")
 
 let rdA = ControllerConfig(name: "Pacco A", bleName: "", ledCount: 200, order: 0)
