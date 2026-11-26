@@ -421,6 +421,8 @@ struct ScoreChip: View {
             .foregroundStyle(score >= 85 ? Theme.textSecondary : (score >= 60 ? Theme.warning : Theme.danger))
             .padding(.horizontal, 6).padding(.vertical, 2)
             .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.stroke))
+            .lineLimit(1)
+            .fixedSize()
             .accessibilityLabel("Compatibilità Y \(score) su 100")
     }
 }
