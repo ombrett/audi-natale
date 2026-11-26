@@ -89,7 +89,9 @@ enum AdaptiveY {
 
         /// Quanto la variante si allontana dal preset originale (in unità ΔE, per l'ottimizzazione).
         var deviation: Double {
-            3 * abs(angle) / (Double.pi / 2) + 3 * abs(log(frequency)) + 2 * abs(phase) + 8 * (1 - amplitude)
+            // Solo un criterio di spareggio: la variante resta un preset separato e l'originale non cambia;
+            // si tiene solo se migliora il punteggio di almeno `variantMinGain`.
+            1.0 * abs(angle) / (Double.pi / 2) + 1.0 * abs(log(frequency)) + 0.5 * abs(phase) + 4 * (1 - amplitude)
         }
 
         var summary: String {
