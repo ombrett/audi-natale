@@ -867,10 +867,15 @@ for c in [SIMD3<Double>(255, 0, 0), SIMD3(0, 255, 0), SIMD3(0, 0, 255), SIMD3(12
 check(okRound, "Adaptive Y: OKLab andata e ritorno")
 let ayRed = SIMD3<Double>(255, 0, 0), ayBlue = SIMD3<Double>(0, 0, 255), ayDark = SIMD3<Double>(10, 10, 10)
 check(AdaptiveY.error(ideals: [ayRed, ayRed], shared: ayRed) == 0 && AdaptiveY.conflict([ayRed, ayBlue]) > 50, "Adaptive Y: errore nullo su copie uguali, conflitto alto rosso/blu")
-let ayMean = AdaptiveY.shared([ayRed, ayBlue], strategy: .perceptualMean) { .zero }
+// Due colori con la stessa luminosità percepita: la media non perde picchi e non è peggio di una copia.
+let ayP = OKLab.to(SIMD3(0.62, 0.12, 0.02)), ayQ = OKLab.to(SIMD3(0.62, -0.08, -0.10))
+let ayMean = AdaptiveY.shared([ayP, ayQ], strategy: .perceptualMean) { .zero }
 let ayHi = AdaptiveY.shared([ayRed, ayDark], strategy: .highlightWeighted) { .zero }
-check(AdaptiveY.error(ideals: [ayRed, ayBlue], shared: ayMean) < AdaptiveY.error(ideals: [ayRed, ayBlue], shared: ayRed) + 1e-9,
-      "Adaptive Y: la media percettiva non è peggio di una copia su rosso/blu")
+check(AdaptiveY.error(ideals: [ayP, ayQ], shared: ayMean) <= AdaptiveY.error(ideals: [ayP, ayQ], shared: ayP) + 1,
+      "Adaptive Y: a pari luminosità la media percettiva non è peggio di una copia")
+// Rosso contro blu: seguire il rosso (più luminoso) costa meno che spegnerlo nella media → la metrica protegge i picchi.
+check(AdaptiveY.error(ideals: [ayRed, ayBlue], shared: ayRed) < AdaptiveY.error(ideals: [ayRed, ayBlue], shared: AdaptiveY.shared([ayRed, ayBlue], strategy: .perceptualMean) { .zero }),
+      "Adaptive Y: la metrica penalizza i picchi persi")
 check(OKLab.from(ayHi).x > OKLab.from(AdaptiveY.shared([ayRed, ayDark], strategy: .perceptualMean) { .zero }).x, "Adaptive Y: la media pesata conserva il picco")
 
 // Mappe di prova: gemelli speculari (come il progetto) e serpentina non speculare (come il montaggio reale).
