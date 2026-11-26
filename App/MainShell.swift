@@ -28,6 +28,7 @@ struct MainShell: View {
     @EnvironmentObject var carMaps: CarMapStore
     @EnvironmentObject var hub: ControllerHub
     @EnvironmentObject var ui: AppUIState
+    @EnvironmentObject var adaptiveY: AdaptiveYStore
 
     var body: some View {
         VStack(spacing: 0) {
@@ -43,7 +44,11 @@ struct MainShell: View {
         }
         .background(Theme.background.ignoresSafeArea())
         .ignoresSafeArea(.keyboard)
-        .onAppear { syncSending(); DebugLaunch.run(ui: ui, player: player, carMaps: carMaps, hub: hub) }
+        .onAppear {
+            player.yStore = adaptiveY
+            syncSending()
+            DebugLaunch.run(ui: ui, player: player, carMaps: carMaps, hub: hub, adaptiveY: adaptiveY)
+        }
         .onChange(of: settings.diyBrightness) { _ in syncSending() }
         .onChange(of: settings.sendWindow) { _ in syncSending() }
         .onChange(of: carMaps.activeID) { _ in player.setMap(carMaps.active); ui.studioSelection = nil }

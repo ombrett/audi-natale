@@ -50,4 +50,8 @@ DATA=$(xcrun simctl get_app_container "$UDID" "$BID" data)
 cp "$DATA/Documents/selftest.txt" ci-out/selftest.txt 2>/dev/null || grep "ALS-SELFTEST" ci-out/selftest-console.log > ci-out/selftest.txt || true
 cat ci-out/selftest.txt || true
 shot 08-mappa3d-scansione-parziale 10 -ALSScreen map3D -ALSPartialScan
+# Adaptive Y su una serpentina di prova: analisi completa dei 60 preset, poi elenco con i punteggi.
+shot 09-preset-adaptive-y 150 -ALSScreen studio -ALSSerpentineScan -ALSAnalyzeY -ALSPresetPicker -ALSPlay ice_scan
+shot 10-inspector-gemelli 10 -ALSScreen studio -ALSPlay ice_scan -ALSSelect B:57:left
+shot 11-mappa3d-gemelli 10 -ALSScreen map3D
 ls -la "$OUT"

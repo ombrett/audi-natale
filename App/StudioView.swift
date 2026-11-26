@@ -8,6 +8,7 @@ struct StudioView: View {
     @EnvironmentObject var player: EffectPlayer
     @EnvironmentObject var model: CarModelStore
     @EnvironmentObject var ui: AppUIState
+    @EnvironmentObject var adaptiveY: AdaptiveYStore
 
     @State private var axes: [CGVector] = []
     @State private var zoneCache: [UUID: AdaptiveEffects.Zone] = [:]
@@ -44,7 +45,7 @@ struct StudioView: View {
             sourceRow
             Hairline()
             if let inspection {
-                InspectorPanel(info: inspection, onClose: { withAnimation(.easeOut(duration: 0.2)) { ui.studioSelection = nil } },
+                InspectorPanel(info: inspection, twin: twinRows(inspection), onClose: { withAnimation(.easeOut(duration: 0.2)) { ui.studioSelection = nil } },
                                onZone: { setZone($0, for: inspection.ledID) }, onReset: { resetZone(inspection.ledID) })
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -53,7 +54,7 @@ struct StudioView: View {
         .background(Theme.background.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .sheet(isPresented: $ui.showPresetPicker) { PresetPicker() }
-        .sheet(isPresented: $showTuning) { TuningSheet().presentationDetents([.height(320)]) }
+        .sheet(isPresented: $showTuning) { TuningSheet().presentationDetents([.height(430)]) }
         .onAppear(perform: refreshZones)
         .onChange(of: carMaps.activeID) { _ in refreshZones() }
         .onChange(of: carMaps.maps.count) { _ in refreshZones() }
@@ -198,6 +199,7 @@ struct StudioView: View {
                 .buttonStyle(.plain)
                 .layoutPriority(1)
                 .accessibilityIdentifier("studio-preset")
+                if let c = player.clip, let a = adaptiveY.analysis(for: c.id) { ScoreChip(score: a.score) }
                 ProgressBar(value: progress).frame(minWidth: 50, maxHeight: 4)
                 Text(String(format: "%04.1f s", shownTime).replacingOccurrences(of: ".", with: ","))
                     .font(Theme.monoBody).foregroundStyle(Theme.textSecondary)
@@ -266,6 +268,16 @@ struct StudioView: View {
 
     // MARK: Inspector e zone
 
+    /// Colori ideali delle copie (ordine dei punti in mappa) e colore inviato, per l'inspector.
+    private func twinRows(_ info: LEDInspection) -> InspectorPanel.Twin? {
+        guard let map, let t = player.twinInfo(info.key) else { return nil }
+        let copies = map.leds.filter { $0.key == info.key }
+        guard copies.count == t.ideal.count, copies.count > 1 else { return nil }
+        let mine = copies.firstIndex { $0.id == info.ledID } ?? 0
+        let other = copies.indices.first { $0 != mine } ?? 0
+        return InspectorPanel.Twin(touched: t.ideal[mine], twin: t.ideal[other], strategy: t.strategy, conflict: t.conflict)
+    }
+
     private var currentInspection: LEDInspection? {
         guard let id = ui.studioSelection, let map else { return nil }
         return LEDInspection.make(map: map, ledID: id, controllers: player.effectiveControllers, colors: player.colors,
@@ -302,7 +314,14 @@ struct StudioView: View {
 
 /// Pannello compatto del LED toccato.
 struct InspectorPanel: View {
+    struct Twin {
+        var touched: RGB
+        var twin: RGB
+        var strategy: AdaptiveY.Strategy?
+        var conflict: Double
+    }
     let info: LEDInspection
+    var twin: Twin? = nil
     var onClose: () -> Void
     var onZone: (AdaptiveEffects.Zone) -> Void
     var onReset: () -> Void
@@ -362,6 +381,19 @@ struct InspectorPanel: View {
                     Text("— nessun effetto").font(Theme.monoBody).foregroundStyle(Theme.textSecondary)
                 }
             }
+            if let t = twin {
+                SpecRow(title: "Ideale ● / ○") {
+                    HStack(spacing: 8) {
+                        swatch(t.touched); swatch(t.twin)
+                        Text(String(format: "ΔE %.0f", t.conflict)).font(Theme.monoSmall).foregroundStyle(t.conflict > 20 ? Theme.warning : Theme.textSecondary)
+                    }
+                }
+                .accessibilityIdentifier("inspector-twin")
+                if let s = t.strategy {
+                    Text("Inviato: \(s.label.lowercased()) — l'anteprima mostra questo colore su entrambi i punti")
+                        .font(.caption2).foregroundStyle(Theme.textSecondary).padding(.top, 4).lineLimit(1).minimumScaleFactor(0.75)
+                }
+            }
             Text(info.copies > 1 ? "● punto toccato · ○ copia sul ramo opposto · stesso RGB inviato" : "Un solo punto rilevato per questo indirizzo")
                 .font(.caption2).foregroundStyle(Theme.textSecondary).padding(.top, 6).lineLimit(1).minimumScaleFactor(0.8)
         }
@@ -369,6 +401,26 @@ struct InspectorPanel: View {
         .padding(.top, 10)
         .padding(.bottom, 6)
         .background(Theme.surface)
+    }
+}
+
+extension InspectorPanel {
+    func swatch(_ c: RGB) -> some View {
+        RoundedRectangle(cornerRadius: 3).fill(Color(rgb: c)).frame(width: 18, height: 18)
+            .overlay(RoundedRectangle(cornerRadius: 3).stroke(Theme.stroke))
+    }
+}
+
+/// Punteggio di compatibilità Y (0–100).
+struct ScoreChip: View {
+    var score: Int
+    var body: some View {
+        Text("Y \(score)")
+            .font(Theme.monoSmall.weight(.semibold))
+            .foregroundStyle(score >= 85 ? Theme.textSecondary : (score >= 60 ? Theme.warning : Theme.danger))
+            .padding(.horizontal, 6).padding(.vertical, 2)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.stroke))
+            .accessibilityLabel("Compatibilità Y \(score) su 100")
     }
 }
 
@@ -424,13 +476,35 @@ struct AxisGizmo: View {
 /// Scelta del preset: i 60 adattivi a un tocco.
 struct PresetPicker: View {
     @EnvironmentObject var player: EffectPlayer
+    @EnvironmentObject var adaptiveY: AdaptiveYStore
     @Environment(\.dismiss) private var dismiss
     @State private var search = ""
 
     var body: some View {
         NavigationStack {
             List {
-                ForEach(AdaptiveEffects.presets.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }) { p in
+                Section {
+                    AdaptiveYStatus()
+                }
+                if !adaptiveY.variants.isEmpty && search.isEmpty {
+                    Section {
+                        ForEach(adaptiveY.variants) { p in presetRow(p) }
+                    } header: { Text("Varianti ottimizzate per la tua auto") }
+                }
+                Section {
+                ForEach(AdaptiveEffects.presets.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) }) { p in presetRow(p) }
+                } header: { Text("60 preset") }
+            }
+            .searchable(text: $search)
+            .scrollContentBackground(.hidden)
+            .background(Theme.background)
+            .navigationTitle("Preset")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { Button("Chiudi") { dismiss() } }
+        }
+    }
+
+    private func presetRow(_ p: AdaptiveEffects.Preset) -> some View {
                     Button {
                         player.play(clip: p)
                         dismiss()
@@ -438,19 +512,16 @@ struct PresetPicker: View {
                         HStack {
                             Text(p.name).foregroundStyle(player.clip?.id == p.id ? Theme.accent : Theme.textPrimary)
                             Spacer()
+                            if let a = adaptiveY.analysis(for: p.id) {
+                                if AdaptiveYStore.isVariant(p.id), let o = adaptiveY.reports[AdaptiveYStore.baseID(p.id)]?.original {
+                                    Text("\(o.score)→").font(Theme.monoSmall).foregroundStyle(Theme.textSecondary)
+                                }
+                                ScoreChip(score: a.score)
+                            }
                             Text(String(format: "%4.1f s%@", p.duration, p.loop ? " ⟲" : "")).font(Theme.monoSmall).foregroundStyle(Theme.textSecondary)
                         }
                     }
                     .accessibilityIdentifier("preset-\(p.id)")
-                }
-            }
-            .searchable(text: $search)
-            .scrollContentBackground(.hidden)
-            .background(Theme.background)
-            .navigationTitle("60 preset")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { Button("Chiudi") { dismiss() } }
-        }
     }
 }
 
@@ -463,6 +534,17 @@ struct TuningSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Regolazioni").font(.headline)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Colore condiviso dei gemelli a Y").font(.subheadline)
+                Picker("Colore condiviso", selection: $player.shareMode) {
+                    ForEach(EffectPlayer.ShareMode.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Text(player.shareMode == .adaptiveY
+                     ? "Per ogni indirizzo il colore con l'errore percepito minore tra le due copie (dall'analisi della mappa)."
+                     : "Regola precedente: vince la copia più luminosa.")
+                    .font(.caption2).foregroundStyle(Theme.textSecondary)
+            }
             slider("Velocità", $player.clipSettings.speed, 0.5...2, String(format: "%.2f×", player.clipSettings.speed))
             slider("Intensità", $player.clipSettings.intensity, 0...1, String(format: "%.0f%%", player.clipSettings.intensity * 100))
             Toggle("Colore unico", isOn: $useTint)

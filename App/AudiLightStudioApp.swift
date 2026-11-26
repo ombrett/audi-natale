@@ -18,6 +18,7 @@ struct AudiLightStudioApp: App {
     @StateObject private var player: EffectPlayer
     @StateObject private var model = CarModelStore()
     @StateObject private var ui = AppUIState()
+    @StateObject private var adaptiveY = AdaptiveYStore()
 
     init() {
         let settings = AppSettings()
@@ -66,6 +67,7 @@ struct AudiLightStudioApp: App {
                 .environmentObject(player)
                 .environmentObject(model)
                 .environmentObject(ui)
+                .environmentObject(adaptiveY)
                 .preferredColorScheme(.dark)
                 .tint(Theme.accent)
         }

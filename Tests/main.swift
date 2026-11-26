@@ -858,6 +858,93 @@ let pRows = pEng.frame(AdaptiveEffects.preset("aurora")!, elapsed: 1.0)
 check(MapSource(partialMap) == .scan && (10...19).allSatisfy { pRows[0][$0] == .black && pEng.addresses[0][$0].isEmpty } && pEng.addresses[0][20].first?.i == 20 && pRows[0][20] != .black,
       "scansione parziale: indirizzi mancanti spenti, i successivi mantengono il numero")
 
+// MARK: Adaptive Y (3.1)
+var okRound = true
+for c in [SIMD3<Double>(255, 0, 0), SIMD3(0, 255, 0), SIMD3(0, 0, 255), SIMD3(120, 234, 193), SIMD3(7, 1, 13), SIMD3(255, 255, 255), SIMD3(0, 0, 0)] {
+    let back = OKLab.to(OKLab.from(c))
+    if abs(back.x - c.x) > 1 || abs(back.y - c.y) > 1 || abs(back.z - c.z) > 1 { okRound = false }
+}
+check(okRound, "Adaptive Y: OKLab andata e ritorno")
+let ayRed = SIMD3<Double>(255, 0, 0), ayBlue = SIMD3<Double>(0, 0, 255), ayDark = SIMD3<Double>(10, 10, 10)
+check(AdaptiveY.error(ideals: [ayRed, ayRed], shared: ayRed) == 0 && AdaptiveY.conflict([ayRed, ayBlue]) > 50, "Adaptive Y: errore nullo su copie uguali, conflitto alto rosso/blu")
+let ayMean = AdaptiveY.shared([ayRed, ayBlue], strategy: .perceptualMean) { .zero }
+let ayHi = AdaptiveY.shared([ayRed, ayDark], strategy: .highlightWeighted) { .zero }
+check(AdaptiveY.error(ideals: [ayRed, ayBlue], shared: ayMean) < AdaptiveY.error(ideals: [ayRed, ayBlue], shared: ayRed) + 1e-9,
+      "Adaptive Y: la media percettiva non è peggio di una copia su rosso/blu")
+check(OKLab.from(ayHi).x > OKLab.from(AdaptiveY.shared([ayRed, ayDark], strategy: .perceptualMean) { .zero }).x, "Adaptive Y: la media pesata conserva il picco")
+
+// Mappe di prova: gemelli speculari (come il progetto) e serpentina non speculare (come il montaggio reale).
+func ayEngine(_ pairs: [(SIMD3<Double>, SIMD3<Double>)], zone: AdaptiveEffects.Zone = .fiancata_anteriore) -> AdaptiveEffects.Engine {
+    var pts: [Int: [Int: [AdaptiveEffects.Point]]] = [0: [:]]
+    for (k, pr) in pairs.enumerated() { pts[0]![k] = [AdaptiveEffects.Point(position: pr.0, zone: zone), AdaptiveEffects.Point(position: pr.1, zone: zone)] }
+    pts[0]![pairs.count] = [AdaptiveEffects.Point(position: SIMD3(0, 0.8, -0.9), zone: zone)]   // indirizzo con una sola copia
+    return AdaptiveEffects.Engine(addressCounts: [pairs.count + 2], points: pts)
+}
+let mirrorPairs = (0..<16).map { k -> (SIMD3<Double>, SIMD3<Double>) in
+    let x = -1.8 + Double(k) * 0.22, y = 0.4 + 0.05 * Double(k % 5)
+    return (SIMD3(x, y, -0.85), SIMD3(x, y, 0.85))
+}
+let mirrorEng = ayEngine(mirrorPairs)
+var mirrorAll100 = true, classicSame = true
+for p in AdaptiveEffects.presets {
+    let a = AdaptiveY.analyze(mirrorEng, p, frames: 6)
+    if a.score != 100 || a.twins != 16 { mirrorAll100 = false }
+    let shared = AdaptiveY.frame(mirrorEng, p, elapsed: 1.3, strategy: { a.strategy($0) })
+    if shared != mirrorEng.frame(p, elapsed: 1.3) { classicSame = false }
+}
+check(mirrorAll100, "Adaptive Y: gemelli speculari = 100/100 su tutti i 60 preset")
+check(classicSame, "Adaptive Y: con gemelli speculari il risultato coincide con la regola classica (compatibilità)")
+
+var lcg: UInt64 = 42
+func ayRand() -> Double { lcg = lcg &* 6364136223846793005 &+ 1442695040888963407; return Double(lcg >> 11) / Double(1 << 53) }
+let serpPairs = (0..<40).map { _ -> (SIMD3<Double>, SIMD3<Double>) in
+    (SIMD3(-1.9 + 3.8 * ayRand(), 0.35 + 1.0 * ayRand(), -0.9 + 1.8 * ayRand()), SIMD3(-1.9 + 3.8 * ayRand(), 0.35 + 1.0 * ayRand(), -0.9 + 1.8 * ayRand()))
+}
+let serpEng = ayEngine(serpPairs)
+var argminOK = true, rangeOK = true, someConflict = false, beatsClassic = true
+for p in AdaptiveEffects.presets.prefix(20) {
+    let a = AdaptiveY.analyze(serpEng, p, frames: 8)
+    if a.residual > (a.strategyErrors.min() ?? 0) + 1e-9 { argminOK = false }
+    if !(0...100).contains(a.score) || !(0...100).contains(a.classicScore) { rangeOK = false }
+    if a.score < 100 { someConflict = true }
+    if a.score < a.classicScore { beatsClassic = false }
+    if a.plan[40] != -1 || a.plan.count != 42 { rangeOK = false }
+}
+check(argminOK, "Adaptive Y: la scelta per indirizzo non è mai peggio di una strategia unica")
+check(rangeOK && someConflict, "Adaptive Y: punteggi 0–100, copia unica senza piano, conflitti rilevati sulla serpentina")
+check(beatsClassic, "Adaptive Y: mai peggio della regola classica")
+
+// Ottimizzazione: copie alla stessa altezza ma agli estremi opposti dell'auto; lo Scanner va lungo la
+// lunghezza (conflitto massimo). Ruotare l'onda in verticale le mette in fase.
+let scanPairs = (0..<12).map { k -> (SIMD3<Double>, SIMD3<Double>) in
+    let y = 0.4 + 0.08 * Double(k)
+    return (SIMD3(-1.5, y, -0.8), SIMD3(1.5, y, 0.6))
+}
+let scanEng = ayEngine(scanPairs)
+let scanRep = AdaptiveY.report(scanEng, AdaptiveEffects.preset("ice_scan")!)
+if let v = scanRep.variant {
+    check(v.score >= scanRep.original.score + AdaptiveY.variantMinGain && abs(v.params.angle) >= Double.pi / 3,
+          "Adaptive Y: variante ottimizzata (direzione ruotata) per il preset incompatibile",
+          "\(scanRep.original.score) → \(v.score), \(v.params.summary)")
+} else { check(false, "Adaptive Y: variante attesa", "punteggio \(scanRep.original.score)") }
+let scanPlan = scanRep.best
+let realFrame = AdaptiveY.frame(scanEng, AdaptiveEffects.preset("ice_scan")!, elapsed: 0.7, params: scanPlan.params, strategy: { scanPlan.strategy($0) })
+check(realFrame.count == 1 && realFrame[0].count == 14 && realFrame[0][13] == .black, "Adaptive Y: un RGB per indirizzo, indirizzo vuoto spento")
+let ayData = try? JSONEncoder().encode(scanRep)
+check(ayData.flatMap { try? JSONDecoder().decode(AdaptiveY.PresetReport.self, from: $0) } == scanRep, "Adaptive Y: rapporto salvabile e rileggibile")
+check(AdaptiveY.fingerprint(serpEng) == AdaptiveY.fingerprint(ayEngine(serpPairs)) && AdaptiveY.fingerprint(serpEng) != AdaptiveY.fingerprint(mirrorEng),
+      "Adaptive Y: impronta della mappa stabile")
+
+// MARK: Controllo gemelli
+let tsA = ControllerConfig(name: "A", bleName: "", ledCount: 10, order: 0)
+var tsLEDs: [PhysicalLED] = []
+for k in 0..<4 { tsLEDs.append(PhysicalLED(key: LEDKey(controller: tsA.id, pixel: k), world: SIMD3(Double(k) * 0.1, 0.8, -0.8), confidence: 1, views: 1, part: "fiancata_anteriore")) }
+tsLEDs.append(PhysicalLED(key: LEDKey(controller: tsA.id, pixel: 0), world: SIMD3(0, 0.8, 0.8), confidence: 1, views: 1, part: "fiancata_anteriore"))
+tsLEDs.append(PhysicalLED(key: LEDKey(controller: tsA.id, pixel: 1), world: SIMD3(1.5, 1.35, -0.2), confidence: 1, views: 1, part: "tetto"))
+let tStats = TwinStats.compute(CarMap(name: "t", leds: tsLEDs), design: nil)
+check(tStats.addresses == 4 && tStats.twins == 2 && tStats.singles == 2 && tStats.farApart == 2 && tStats.differentZones == 1 && abs(tStats.maxDistance - simd_distance(SIMD3(0.1, 0.8, -0.8), SIMD3(1.5, 1.35, -0.2))) < 1e-9,
+      "gemelli: conteggi e distanze reali senza ipotesi di simmetria")
+
 print("\n\(passed) superati, \(failures) falliti")
 if let dir = CommandLine.arguments.dropFirst().first {
     try? "\(passed) superati, \(failures) falliti\n".write(toFile: dir + "/logic-summary.txt", atomically: true, encoding: .utf8)

@@ -36,6 +36,13 @@ Ricerca sul protocollo, con distinzione documentato / dedotto / da verificare: *
 
 Il firmware più vicino analizzato (TR2309) ha buffer da **400 LED** e scrive fuori memoria, in modo persistente, oltre quel limite. Un solo controller da 1600 LED non è dimostrato: probabilmente servono più centraline (es. 4 × 400). L'app non supera 400 finché non sarà dimostrato il contrario. Dettagli in [docs/PROTOCOL.md §5](docs/PROTOCOL.md).
 
+## Versione 3.1 — Adaptive Y
+
+- `Logic/AdaptiveY.swift`: per ogni preset calcola il colore ideale di ogni copia fisica sulla mappa reale (nessuna ipotesi di simmetria: serpentina, altezze e lati diversi), misura il conflitto cromatico tra le copie su tutta l'animazione in OKLab, confronta 6 strategie di colore condiviso (più luminosa, media percettiva, media che conserva i picchi, punto medio, segue copia 1, segue copia 2) e sceglie per ogni indirizzo quella con l'errore percepito minore sull'intera animazione.
+- Punteggio di compatibilità 0–100 per preset; per i preset sotto 85 ottimizza direzione, frequenza spaziale, fase e ampiezza dell'onda e crea una variante "· Y" se guadagna almeno 5 punti.
+- Anteprima e Live usano lo stesso fotogramma riproducibile (un RGB per indirizzo). Regolazioni › Colore condiviso: Adaptive Y o Classico (regola precedente).
+- Mappa 3D › Gemelli a Y: copie per indirizzo, distanze reali, copie in zone diverse, analisi. Inspector: colore ideale delle due copie, ΔE e strategia usata.
+
 ## Versione 3.0 — redesign Studio
 
 - Navigazione: **Studio · Mappa 3D · Centraline · Altro**. Tabella completa "funzione → nuova posizione" in `docs/REDESIGN.md`.

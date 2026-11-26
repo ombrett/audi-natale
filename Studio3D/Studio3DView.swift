@@ -103,6 +103,7 @@ struct Studio3DView: View {
                         .font(.caption2).foregroundStyle(Theme.textSecondary)
                 }
                 if zoneMode { zoneCard } else if let led = map?.leds.first(where: { $0.id == selectedID }) { selectionCard(led) }
+                if map != nil { TwinCard() }
                 displayCard
                 mapCard
                 modelCard

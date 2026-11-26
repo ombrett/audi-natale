@@ -100,3 +100,36 @@ struct LEDInspection: Equatable {
                              zone: map.zone(of: led, design: design), origin: origin, rgb: colors[led.key], position: p, copies: same.count)
     }
 }
+
+/// Controllo dei gemelli a Y su una mappa reale: quanti indirizzi hanno più copie e quanto sono lontane.
+/// Non presuppone simmetria: misura solo ciò che la mappa contiene.
+struct TwinStats: Equatable {
+    var addresses = 0          // indirizzi con almeno un punto
+    var twins = 0              // indirizzi con 2+ copie
+    var singles = 0
+    var medianDistance = 0.0   // m
+    var maxDistance = 0.0
+    var farApart = 0           // copie oltre 0,5 m
+    var differentZones = 0     // copie in zone diverse
+
+    static func compute(_ map: CarMap, design: [LEDLayoutImport.Point]?) -> TwinStats {
+        var groups: [LEDKey: [PhysicalLED]] = [:]
+        for led in map.leds { groups[led.key, default: []].append(led) }
+        var s = TwinStats()
+        s.addresses = groups.count
+        var dists: [Double] = []
+        for (_, leds) in groups {
+            guard leds.count > 1 else { s.singles += 1; continue }
+            s.twins += 1
+            var d = 0.0
+            for i in 0..<leds.count { for j in (i + 1)..<leds.count { d = max(d, simd_distance(map.carPosition(leds[i]), map.carPosition(leds[j]))) } }
+            dists.append(d)
+            if d > 0.5 { s.farApart += 1 }
+            if Set(leds.map { map.zone(of: $0, design: design) }).count > 1 { s.differentZones += 1 }
+        }
+        dists.sort()
+        s.medianDistance = dists.isEmpty ? 0 : dists[dists.count / 2]
+        s.maxDistance = dists.last ?? 0
+        return s
+    }
+}

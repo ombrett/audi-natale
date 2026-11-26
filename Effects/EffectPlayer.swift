@@ -32,6 +32,17 @@ final class EffectPlayer: ObservableObject {
     /// Posizione corrente in secondi (per il trasporto e le verifiche).
     @Published private(set) var playhead: Double = 0
     private var lastTick = CACurrentMediaTime()
+    /// Come si sceglie l'unico RGB di un indirizzo a Y.
+    enum ShareMode: String, CaseIterable, Identifiable {
+        case adaptiveY = "Adaptive Y"
+        case classic = "Classico · più luminosa"
+        var id: String { rawValue }
+    }
+    @Published var shareMode: ShareMode = ShareMode(rawValue: UserDefaults.standard.string(forKey: "shareMode") ?? "") ?? .adaptiveY {
+        didSet { UserDefaults.standard.set(shareMode.rawValue, forKey: "shareMode") }
+    }
+    /// Analisi Adaptive Y della mappa attiva (piani per indirizzo e varianti).
+    weak var yStore: AdaptiveYStore? { didSet { yStore?.attach(adaptive) } }
     /// Centraline usate dall'anteprima: configurate + quelle citate dalla mappa (lavoro offline).
     @Published private(set) var effectiveControllers: [ControllerConfig] = []
     /// Campioni della mappa attiva per le animazioni adattive (zone dal progetto o dal punto di progetto più vicino).
@@ -61,6 +72,7 @@ final class EffectPlayer: ObservableObject {
         self.map = map
         effectiveControllers = ControllerResolver.effective(hub.controllers, map: map)
         adaptive = map.flatMap { $0.adaptiveEngine(controllers: effectiveControllers, design: ProjectLayout.bundled?.points) }
+        yStore?.attach(adaptive)
         if !isPlaying, let program { renderPreview(program, at: 0) }
     }
 
@@ -108,8 +120,39 @@ final class EffectPlayer: ObservableObject {
     /// Fotogramma corrente dell'animazione adattiva, per pixel logico.
     private func clipColors() -> [LEDKey: RGB]? {
         guard let clip, let adaptive else { return nil }
-        let rows = adaptive.frame(clip, elapsed: clock.position).map { $0.map { FramePack.adjust($0, clipSettings) } }
+        let rows = reproducibleRows(clip, engine: adaptive, elapsed: clock.position).map { $0.map { FramePack.adjust($0, clipSettings) } }
         return FramePack.keyed(rows, controllers: effectiveControllers)
+    }
+
+    /// Ciò che le centraline possono davvero mostrare: un RGB per indirizzo (stesso calcolo per anteprima e Live).
+    private func reproducibleRows(_ clip: AdaptiveEffects.Preset, engine: AdaptiveEffects.Engine, elapsed: Double) -> [[RGB]] {
+        let base = AdaptiveEffects.preset(AdaptiveYStore.baseID(clip.id)) ?? clip
+        let analysis = yStore?.analysis(for: clip.id)
+        let params = AdaptiveYStore.isVariant(clip.id) ? (analysis?.params ?? .identity) : .identity
+        switch shareMode {
+        case .classic where params.isIdentity:
+            return engine.frame(base, elapsed: elapsed)
+        case .classic:
+            return AdaptiveY.frame(engine, base, elapsed: elapsed, params: params, strategy: { _ in .brightest })
+        case .adaptiveY:
+            return AdaptiveY.frame(engine, base, elapsed: elapsed, params: params,
+                                   strategy: { analysis?.strategy($0) ?? .highlightWeighted })
+        }
+    }
+
+    /// Per l'inspector: colore ideale di ogni copia fisica dell'indirizzo (ordine dei punti della mappa),
+    /// strategia usata e conflitto percepito in questo istante.
+    func twinInfo(_ key: LEDKey) -> (ideal: [RGB], strategy: AdaptiveY.Strategy?, conflict: Double)? {
+        guard let clip, let adaptive, let ci = effectiveControllers.firstIndex(where: { $0.id == key.controller }),
+              adaptive.addresses.indices.contains(ci), adaptive.addresses[ci].indices.contains(key.pixel) else { return nil }
+        let base = AdaptiveEffects.preset(AdaptiveYStore.baseID(clip.id)) ?? clip
+        let analysis = yStore?.analysis(for: clip.id)
+        let params = AdaptiveYStore.isVariant(clip.id) ? (analysis?.params ?? .identity) : .identity
+        let u = AdaptiveEffects.Engine.phase(base, elapsed: clock.position)
+        let cs = adaptive.addresses[ci][key.pixel].map { base.effect(u, params.apply($0)) }
+        let g = AdaptiveY.offsets(adaptive)[ci] + key.pixel
+        let strategy: AdaptiveY.Strategy? = cs.count < 2 ? nil : (shareMode == .classic ? .brightest : (analysis?.strategy(g) ?? .highlightWeighted))
+        return (cs.map { FramePack.adjust(RGB(r: UInt8($0.x), g: UInt8($0.y), b: UInt8($0.z)), clipSettings) }, strategy, AdaptiveY.conflict(cs))
     }
 
     func stop() {

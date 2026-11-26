@@ -9,6 +9,9 @@ import SwiftUI
 ///  -ALSSelect B:57:left    seleziona un punto fisico (apre l'inspector)
 ///  -ALSZoneMode            Mappa 3D aperta in modifica zone con alcuni punti selezionati
 ///  -ALSSelfTest            verifiche nell'app vera (store su disco, player, scena): stampa ALS-SELFTEST …
+///  -ALSSerpentineScan      "scansione" con gemelli non speculari (serpentina): copie di ramo destro rimescolate
+///  -ALSAnalyzeY            avvia l'analisi Adaptive Y sulla mappa attiva
+///  -ALSPresetPicker        apre l'elenco dei preset (punteggi Y) dopo l'analisi
 enum DebugLaunch {
     private static var done = false
     static let args = ProcessInfo.processInfo.arguments
@@ -18,7 +21,7 @@ enum DebugLaunch {
         return args[i + 1]
     }
 
-    static func run(ui: AppUIState, player: EffectPlayer, carMaps: CarMapStore, hub: ControllerHub) {
+    static func run(ui: AppUIState, player: EffectPlayer, carMaps: CarMapStore, hub: ControllerHub, adaptiveY: AdaptiveYStore) {
         guard !done, args.contains(where: { $0.hasPrefix("-ALS") }) else { return }
         done = true
         if has("-ALSSeedDemo") && carMaps.active == nil, let r = ProjectLayout.bundled {
@@ -31,7 +34,19 @@ enum DebugLaunch {
             carMaps.save(m)
             carMaps.activeID = m.id
         }
+        if has("-ALSSerpentineScan"), let design = carMaps.maps.first(where: { $0.isDesign }) {
+            let m = serpentineScan(from: design)
+            carMaps.save(m)
+            carMaps.activeID = m.id
+        }
         player.setMap(carMaps.active)
+        if has("-ALSAnalyzeY"), let e = player.adaptive { adaptiveY.analyzeAll(e) }
+        if has("-ALSPresetPicker") {
+            func open() {
+                if adaptiveY.isRunning { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: open) } else { ui.showPresetPicker = true }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0, execute: open)
+        }
         if let s = value("-ALSScreen"), let sec = MainSection(rawValue: s) { ui.section = sec }
         if value("-ALSStudioMode") == "map" { ui.studioMode = .map }
         if let id = value("-ALSPlay"), let p = AdaptiveEffects.preset(id) { player.play(clip: p) }
@@ -40,7 +55,7 @@ enum DebugLaunch {
                 ui.studioSelection = find(sel, map: m, controllers: player.effectiveControllers)?.id
             }
         }
-        if has("-ALSSelfTest") { SelfTest(ui: ui, player: player, carMaps: carMaps, hub: hub).start() }
+        if has("-ALSSelfTest") { SelfTest(ui: ui, player: player, carMaps: carMaps, hub: hub, adaptiveY: adaptiveY).start() }
     }
 
     /// "B:57:left" → punto fisico.
@@ -58,6 +73,23 @@ enum DebugLaunch {
             }
         }
         return copies.first
+    }
+
+    /// Montaggio a serpentina di prova: la copia di ramo destro di ogni indirizzo prende la posizione di
+    /// un altro indirizzo della stessa centralina (altezza, lato e distanza dal centro diversi).
+    static func serpentineScan(from design: CarMap) -> CarMap {
+        var byCtrl: [UUID: [PhysicalLED]] = [:]
+        for led in design.leds where led.branch == "right" { byCtrl[led.key.controller, default: []].append(led) }
+        var rightPos: [LEDKey: SIMD3<Double>] = [:]
+        for (_, list) in byCtrl {
+            let sorted = list.sorted { $0.key.pixel < $1.key.pixel }
+            for (i, led) in sorted.enumerated() { rightPos[led.key] = sorted[(i * 37 + 11) % sorted.count].world }
+        }
+        let leds = design.leds.map { led -> PhysicalLED in
+            let w = led.branch == "right" ? (rightPos[led.key] ?? led.world) : led.world
+            return PhysicalLED(key: led.key, world: w, confidence: 0.9, views: 3)
+        }
+        return CarMap(name: "Scansione serpentina di prova", leds: leds)
     }
 
     /// Scansione parziale di prova: posizioni del progetto con piccole deviazioni, senza gli indirizzi 10–19
@@ -80,11 +112,11 @@ enum DebugLaunch {
 
 /// Verifiche eseguite nell'app vera (simulatore): store su disco, player, scena.
 final class SelfTest {
-    let ui: AppUIState, player: EffectPlayer, carMaps: CarMapStore, hub: ControllerHub
+    let ui: AppUIState, player: EffectPlayer, carMaps: CarMapStore, hub: ControllerHub, adaptiveY: AdaptiveYStore
     private var results: [String] = []
 
-    init(ui: AppUIState, player: EffectPlayer, carMaps: CarMapStore, hub: ControllerHub) {
-        self.ui = ui; self.player = player; self.carMaps = carMaps; self.hub = hub
+    init(ui: AppUIState, player: EffectPlayer, carMaps: CarMapStore, hub: ControllerHub, adaptiveY: AdaptiveYStore) {
+        self.ui = ui; self.player = player; self.carMaps = carMaps; self.hub = hub; self.adaptiveY = adaptiveY
     }
 
     private func report(_ name: String, _ ok: Bool, _ detail: String) {
@@ -186,6 +218,42 @@ final class SelfTest {
             carMaps.delete(scan.id)
             carMaps.activeID = previous
             player.setMap(carMaps.active)
+            adaptiveYCheck()
+        }
+    }
+
+    // 4) Adaptive Y su una serpentina: l'anteprima è esattamente ciò che va alle centraline.
+    private func adaptiveYCheck() {
+        guard let design = carMaps.maps.first(where: { $0.isDesign }) else { report("adaptive_y", false, "nessun layout"); return finish() }
+        let previous = carMaps.activeID
+        let serp = DebugLaunch.serpentineScan(from: design)
+        carMaps.save(serp)
+        carMaps.activeID = serp.id
+        player.setMap(serp)
+        guard let engine = player.adaptive, let preset = AdaptiveEffects.preset("ice_scan") else { report("adaptive_y", false, "motore"); return finish() }
+        let t0 = Date()
+        let rep = AdaptiveY.report(engine, preset)
+        let secs = Date().timeIntervalSince(t0)
+        report("adaptive_y_analysis", (0...100).contains(rep.original.score) && rep.original.twins > 700 && rep.best.score >= rep.original.classicScore,
+               String(format: "Scanner Ghiaccio: classico %d, Adaptive Y %d%@, %d coppie, %.1f s", rep.original.classicScore, rep.original.score,
+                      rep.variant.map { " → variante \($0.score) (\($0.params.summary))" } ?? "", rep.original.twins, secs))
+        player.shareMode = .adaptiveY
+        player.play(clip: preset)
+        after(1.0) { [self] in
+            player.pause()
+            let list = player.effectiveControllers
+            let analysis = adaptiveY.analysis(for: preset.id)
+            let rows = AdaptiveY.frame(engine, preset, elapsed: player.playhead, strategy: { analysis?.strategy($0) ?? .highlightWeighted })
+            let expected = FramePack.keyed(rows.map { $0.map { FramePack.adjust($0, player.clipSettings) } }, controllers: list)
+            let same = expected == player.colors
+            let split = FrameSplitter.split(player.colors, controllers: list)
+            let perAddress = list.allSatisfy { (split[$0.id]?.count ?? 0) == min($0.ledCount, IdealProtocol.maxSafeLEDs) }
+            report("adaptive_y_preview_is_reproducible", same && perAddress,
+                   "anteprima = fotogramma inviato: \(same); un RGB per indirizzo su tutte le centraline: \(perAddress)")
+            carMaps.delete(serp.id)
+            carMaps.activeID = previous
+            player.setMap(carMaps.active)
+            player.resume()
             finish()
         }
     }
