@@ -203,6 +203,7 @@ struct StudioView: View {
                 ProgressBar(value: progress).frame(minWidth: 50, maxHeight: 4)
                 Text(String(format: "%04.1f s", shownTime).replacingOccurrences(of: ".", with: ","))
                     .font(Theme.monoBody).foregroundStyle(Theme.textSecondary)
+                    .lineLimit(1).fixedSize()
                     .accessibilityIdentifier("studio-playhead")
             }
             HStack(spacing: 10) {

@@ -2,10 +2,10 @@
 # Build per simulatore, screenshot delle schermate principali e verifiche nell'app (ALS-SELFTEST).
 set -uo pipefail
 OUT=ci-out/screens; mkdir -p "$OUT"
-xcodebuild -project AudiLightStudio.xcodeproj -scheme AudiLightStudio -configuration Debug -sdk iphonesimulator \
+xcodebuild -project AudiLightStudio.xcodeproj -scheme AudiLightStudio -configuration Release -sdk iphonesimulator \
   -destination 'generic/platform=iOS Simulator' -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO build > ci-out/sim-build.log 2>&1
 echo "build simulatore: $?"; tail -3 ci-out/sim-build.log
-APP=$(find build/sim/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
+APP=$(find build/sim/Build/Products/Release-iphonesimulator -maxdepth 1 -name "*.app" | head -1)
 test -n "$APP" || { echo "app per simulatore non trovata"; exit 1; }
 UDID=$(xcrun simctl list devices available -j | python3 -c '
 import json,sys
@@ -51,7 +51,7 @@ cp "$DATA/Documents/selftest.txt" ci-out/selftest.txt 2>/dev/null || grep "ALS-S
 cat ci-out/selftest.txt || true
 shot 08-mappa3d-scansione-parziale 10 -ALSScreen map3D -ALSPartialScan
 # Adaptive Y su una serpentina di prova: analisi completa dei 60 preset, poi elenco con i punteggi.
-shot 09-preset-adaptive-y 150 -ALSScreen studio -ALSSerpentineScan -ALSAnalyzeY -ALSPresetPicker -ALSPlay ice_scan
+shot 09-preset-adaptive-y 240 -ALSScreen studio -ALSSerpentineScan -ALSAnalyzeY -ALSPresetPicker -ALSPlay ice_scan
 shot 10-inspector-gemelli 10 -ALSScreen studio -ALSPlay ice_scan -ALSSelect B:57:left
 shot 11-mappa3d-gemelli 10 -ALSScreen map3D
 ls -la "$OUT"
